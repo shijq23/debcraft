@@ -9,8 +9,10 @@ from debcraft.platform.contracts.configuration import ConfigurationService
 from debcraft.platform.contracts.container import Container, Scope
 from debcraft.platform.contracts.events import DomainEvent, EventBus, EventHandler
 from debcraft.platform.contracts.logging import Logger, LoggerFactory
+from debcraft.platform.contracts.persistence import DatabaseName, DatabaseProvider, Repository, UnitOfWork
 from debcraft.platform.contracts.policies import ExecutionPolicy
 from debcraft.platform.contracts.resources import ResourceManager
+from debcraft.platform.contracts.storage import StorageEngine, StorageProvider, StoragePurpose
 from debcraft.platform.contracts.workflow import (
     CancellationToken,
     ProgressReporter,
@@ -26,6 +28,8 @@ __all__ = [
     "CancellationToken",
     "ConfigurationService",
     "Container",
+    "DatabaseName",
+    "DatabaseProvider",
     "DomainEvent",
     "EventBus",
     "EventHandler",
@@ -33,8 +37,13 @@ __all__ = [
     "Logger",
     "LoggerFactory",
     "ProgressReporter",
+    "Repository",
     "ResourceManager",
     "Scope",
+    "StorageEngine",
+    "StorageProvider",
+    "StoragePurpose",
+    "UnitOfWork",
     "Workflow",
     "WorkflowContext",
     "WorkflowEngine",
