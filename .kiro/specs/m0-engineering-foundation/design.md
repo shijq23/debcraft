@@ -195,7 +195,7 @@ app()
 ```toml
 [tool.ruff]
 target-version = "py313"
-line-length = 100
+line-length = 120
 src = ["src", "tests"]
 
 [tool.ruff.lint]

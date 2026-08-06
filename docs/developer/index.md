@@ -17,7 +17,7 @@ This section covers everything you need to contribute to DebCraft.
 
 DebCraft follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) enforced by:
 
-- **Ruff** — Linting and formatting (line length 100, Google docstring convention)
+- **Ruff** — Linting and formatting (line length 120, Google docstring convention)
 - **BasedPyright** — Static type checking in standard mode
 - **pre-commit** — Automatic checks on every commit
 

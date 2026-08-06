@@ -26,7 +26,7 @@ This project follows the [Google Python Style Guide](https://google.github.io/st
 Key conventions:
 
 - Python 3.13+ features are encouraged
-- Line length limit: 100 characters
+- Line length limit: 120 characters
 - Use `pathlib.Path` for all path operations
 - Type annotations on all public functions
 - Google-style docstrings on all public modules, classes, and functions

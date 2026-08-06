@@ -96,8 +96,7 @@ def test_plugins_do_not_cross_import():
                         if imported_plugin != plugin_name:
                             relative = py_file.relative_to(SRC_ROOT.parent)
                             violations.append(
-                                f"{relative}: plugin '{plugin_name}' imports "
-                                f"from plugin '{imported_plugin}' ({imp})"
+                                f"{relative}: plugin '{plugin_name}' imports from plugin '{imported_plugin}' ({imp})"
                             )
 
     # Also check the top-level plugin files (not in a subpackage)
@@ -136,9 +135,8 @@ def test_contracts_have_no_implementation_dependencies():
                 relative = py_file.relative_to(SRC_ROOT.parent)
                 violations.append(f"{relative}: imports plugins ({imp})")
 
-    assert violations == [], (
-        "Contracts must not depend on infrastructure or plugins:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert violations == [], "Contracts must not depend on infrastructure or plugins:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -172,20 +170,12 @@ def test_no_mutable_module_level_global_state():
                 # Check bare assignments at module level (not inside functions/classes)
                 if isinstance(node, ast.Assign) and _is_mutable_value(node.value):
                     for target in node.targets:
-                        if (
-                            isinstance(target, ast.Name)
-                            and not target.id.isupper()
-                            and target.id != "__all__"
-                        ):
+                        if isinstance(target, ast.Name) and not target.id.isupper() and target.id != "__all__":
                             relative = py_file.relative_to(SRC_ROOT.parent)
-                            violations.append(
-                                f"{relative}: mutable global '{target.id}' (line {node.lineno})"
-                            )
+                            violations.append(f"{relative}: mutable global '{target.id}' (line {node.lineno})")
 
                 # Check annotated assignments (x: list = [])
-                elif (
-                    isinstance(node, ast.AnnAssign) and node.value and _is_mutable_value(node.value)
-                ):
+                elif isinstance(node, ast.AnnAssign) and node.value and _is_mutable_value(node.value):
                     # Allow if annotated with Final
                     if _is_final_annotation(node.annotation):
                         continue
@@ -193,13 +183,10 @@ def test_no_mutable_module_level_global_state():
                         name = node.target.id
                         if not name.isupper() and name != "__all__":
                             relative = py_file.relative_to(SRC_ROOT.parent)
-                            violations.append(
-                                f"{relative}: mutable global '{name}' (line {node.lineno})"
-                            )
+                            violations.append(f"{relative}: mutable global '{name}' (line {node.lineno})")
 
-    assert violations == [], (
-        "Modules must not contain mutable module-level global state:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert violations == [], "Modules must not contain mutable module-level global state:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 

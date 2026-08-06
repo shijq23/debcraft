@@ -8,7 +8,7 @@ This plan implements the engineering foundation for DebCraft with zero business 
 
 - [x] 1. Initialize project with pyproject.toml and src layout
   - [x] 1.1 Create `pyproject.toml` with PEP 621 metadata, Hatchling build backend, runtime dependencies (typer, rich, sqlalchemy, aiohttp), dev dependencies (ruff, basedpyright, pytest, pytest-cov, pytest-asyncio, coverage, mkdocs, mkdocs-material, mkdocstrings[python], import-linter, bandit, pre-commit), Python >=3.13 requirement, and `[project.scripts] debcraft = "debcraft.cli:app"`
-    - Include full Ruff configuration (target-version py313, line-length 100, Google style rules, pydocstyle convention google, per-file-ignores for tests)
+    - Include full Ruff configuration (target-version py313, line-length 120, Google style rules, pydocstyle convention google, per-file-ignores for tests)
     - Include BasedPyright configuration (standard mode, Python 3.13)
     - Include pytest configuration (testpaths, addopts with `unit and not slow`, all markers registered)
     - Include coverage configuration (source = debcraft, branch coverage)

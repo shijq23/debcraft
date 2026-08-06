@@ -27,6 +27,7 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-asyncio>=0.24",
     "coverage>=7.0",
+    "hypothesis>=6.100",
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.26",
@@ -41,7 +42,7 @@ dev = [
 
 [tool.ruff]
 target-version = "py313"
-line-length = 100
+line-length = 120
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -71,7 +72,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "D103", "ANN"]
+"tests/**/*.py" = ["S101", "D101", "D102", "D103", "D107", "ANN", "TCH"]
 
 # =============================================================================
 # BasedPyright Configuration
@@ -161,7 +162,7 @@ forbidden_modules = ["debcraft.infrastructure"]
 name = "Contracts purity"
 type = "forbidden"
 source_modules = ["debcraft.platform.contracts"]
-forbidden_modules = ["debcraft.infrastructure", "debcraft.plugins"]
+forbidden_modules = ["debcraft.infrastructure", "debcraft.plugins", "debcraft.platform.kernel"]
 
 [[tool.importlinter.contracts]]
 name = "Plugin isolation"
