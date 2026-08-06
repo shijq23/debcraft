@@ -1,0 +1,50 @@
+image: python:3.13
+
+stages:
+  - lint
+  - typecheck
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+
+cache:
+  paths:
+    - .cache/pip
+    - .cache/uv
+
+.setup: &setup
+  before_script:
+    - pip install uv
+    - uv sync --locked
+
+format:
+  stage: lint
+  <<: *setup
+  script:
+    - uv run ruff format --check src/ tests/
+
+lint:
+  stage: lint
+  <<: *setup
+  script:
+    - uv run ruff check src/ tests/
+
+typecheck:
+  stage: typecheck
+  <<: *setup
+  script:
+    - uv run basedpyright src/
+
+unit-tests:
+  stage: test
+  <<: *setup
+  script:
+    - uv run pytest
+
+architecture-tests:
+  stage: test
+  <<: *setup
+  script:
+    - uv run pytest -m architecture

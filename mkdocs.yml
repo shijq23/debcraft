@@ -1,0 +1,56 @@
+site_name: DebCraft Documentation
+site_description: Documentation for DebCraft - Artifact Intelligence Platform for Debian-based ecosystems
+site_url: https://debcraft.io/docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - architecture/index.md
+  - Specifications:
+      - specifications/index.md
+  - ADR:
+      - adr/index.md
+      - Template: adr/template.md
+  - Developer Guide:
+      - developer/index.md
+      - Getting Started: developer/getting-started.md
+  - User Guide:
+      - user/index.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
