@@ -11,6 +11,8 @@ naming convention are removed and all other files remain untouched.
 from __future__ import annotations
 
 import asyncio
+import re
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -36,6 +38,14 @@ def _make_tmp_name(name: str) -> str:
 def _make_tmp_name_suffix(name: str) -> str:
     """Turn a base name into a temporary filename with .tmp suffix."""
     return f"{name}.tmp"
+
+
+_WINDOWS_RESERVED_RE = re.compile(r"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..+)?$", re.IGNORECASE)
+
+
+def _is_windows_reserved(name: str) -> bool:
+    """Return True if name is a Windows reserved device name."""
+    return _WINDOWS_RESERVED_RE.match(name) is not None
 
 
 @pytest.mark.unit
@@ -74,6 +84,15 @@ class TestTemporaryFileCleanupProperty:
                 sanitized = base_name.replace("\x00", "").strip()
                 if not sanitized:
                     continue
+                if sys.platform == "win32":
+                    # Filter characters illegal in Windows filenames
+                    sanitized = re.sub(r'[<>:"/\\|?*]', "", sanitized).strip()
+                    # Windows silently strips trailing dots and spaces
+                    sanitized = sanitized.rstrip(". ")
+                    if not sanitized:
+                        continue
+                    if _is_windows_reserved(sanitized):
+                        continue
 
                 if is_tmp:
                     # Alternate between .tmp suffix and tmp_ prefix
@@ -87,6 +106,8 @@ class TestTemporaryFileCleanupProperty:
                     if _is_tmp_file(name):
                         name = f"keep_{name}"
 
+                if sys.platform == "win32" and _is_windows_reserved(name):
+                    continue
                 if name in seen_names:
                     continue
                 seen_names.add(name)

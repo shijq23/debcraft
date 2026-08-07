@@ -99,17 +99,32 @@ class TestXdgPathResolutionProperty:
     )
     def test_result_is_absolute_path(self, platform: str, purpose: str) -> None:
         """Resolved path is always absolute when HOME/USERPROFILE is set."""
-        # Use a deterministic absolute HOME so the result is always absolute.
-        if platform == "win32" and sys.platform != "win32":
+        if platform == "win32" and sys.platform == "win32":
+            # Running Windows path logic on actual Windows — use native paths
+            environ = {
+                "USERPROFILE": "C:\\Users\\testuser",
+                "LOCALAPPDATA": "C:\\Users\\testuser\\AppData\\Local",
+                "APPDATA": "C:\\Users\\testuser\\AppData\\Roaming",
+            }
+        elif platform == "win32" and sys.platform != "win32":
             # On non-Windows host, use POSIX-style paths for USERPROFILE.
-            environ = {"USERPROFILE": "/users/testuser", "LOCALAPPDATA": "/local", "APPDATA": "/roaming"}
+            environ = {
+                "USERPROFILE": "/users/testuser",
+                "LOCALAPPDATA": "/local",
+                "APPDATA": "/roaming",
+            }
         elif platform == "darwin":
             environ = {"HOME": "/Users/testuser"}
         else:
             environ = {"HOME": "/home/testuser"}
 
         result = resolve_xdg_path(purpose, environ=environ, platform=platform)  # type: ignore[arg-type]
-        assert PurePosixPath(result.as_posix()).is_absolute()
+
+        # Use native is_absolute() for native Windows paths, PurePosixPath for simulated POSIX paths
+        if platform == "win32" and sys.platform == "win32":
+            assert result.is_absolute()
+        else:
+            assert PurePosixPath(result.as_posix()).is_absolute()
 
     @settings(max_examples=200)
     @given(

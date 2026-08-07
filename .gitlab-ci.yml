@@ -43,6 +43,12 @@ unit-tests:
   script:
     - uv run pytest
 
+import-linter:
+  stage: test
+  <<: *setup
+  script:
+    - uv run lint-imports
+
 architecture-tests:
   stage: test
   <<: *setup

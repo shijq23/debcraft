@@ -1,0 +1,18 @@
+# Default mirrors.toml configuration for debcraft repository mirroring.
+#
+# Place this file at the XDG config path (typically ~/.config/debcraft/mirrors.toml)
+# to customize mirror settings. If absent, the built-in defaults below are used.
+
+[settings]
+download_timeout = 300
+max_connections_per_repo = 10
+max_total_connections = 60
+rate_limit_rps = 20.0
+rate_limit_burst = 10
+
+[[repository]]
+name = "elxr"
+base_url = "https://mirror.elxr.dev/elxr"
+suites = ["aria"]
+components = ["main"]
+architectures = ["amd64", "arm64"]

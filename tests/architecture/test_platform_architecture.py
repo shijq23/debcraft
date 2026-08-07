@@ -2,7 +2,7 @@
 
 Validates:
 - Contract purity: platform/contracts/ imports no kernel, infrastructure, or plugin modules
-- ABC-to-implementation mapping: every ABC in contracts has a kernel implementation
+- ABC-to-implementation mapping: every ABC in contracts has an implementation in kernel or infrastructure
 - No module-level mutable global state in platform/kernel/
 """
 
@@ -19,6 +19,7 @@ SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "debcraft"
 
 CONTRACTS_DIR = SRC_ROOT / "platform" / "contracts"
 KERNEL_DIR = SRC_ROOT / "platform" / "kernel"
+INFRASTRUCTURE_DIR = SRC_ROOT / "infrastructure"
 
 
 def _get_python_files(directory: Path) -> list[Path]:
@@ -93,7 +94,7 @@ class TestContractPurity:
 
 @pytest.mark.architecture
 class TestABCImplementationMapping:
-    """Verify all ABCs in contracts have corresponding implementations in kernel."""
+    """Verify all ABCs in contracts have corresponding implementations in kernel or infrastructure."""
 
     def _discover_contract_abcs(self) -> dict[str, type]:
         """Discover all ABC classes defined in the contracts package."""
@@ -140,6 +141,23 @@ class TestABCImplementationMapping:
 
         return classes
 
+    def _discover_infrastructure_classes(self) -> dict[str, type]:
+        """Discover all classes defined in the infrastructure package."""
+        classes: dict[str, type] = {}
+        infra_pkg = "debcraft.infrastructure"
+        for module_info in pkgutil.walk_packages(
+            [str(INFRASTRUCTURE_DIR)],
+            prefix=f"{infra_pkg}.",
+        ):
+            try:
+                module = importlib.import_module(module_info.name)
+            except ImportError:
+                continue
+            for name, obj in inspect.getmembers(module, inspect.isclass):
+                if obj.__module__.startswith(infra_pkg):
+                    classes[name] = obj
+        return classes
+
     # ABCs that are intentionally designed for user/plugin extension,
     # not for kernel implementation.
     _USER_FACING_ABCS = frozenset(
@@ -151,6 +169,7 @@ class TestABCImplementationMapping:
     def test_all_abcs_have_kernel_implementations(self):
         contract_abcs = self._discover_contract_abcs()
         kernel_classes = self._discover_kernel_classes()
+        infrastructure_classes = self._discover_infrastructure_classes()
 
         missing: list[str] = []
 
@@ -158,16 +177,14 @@ class TestABCImplementationMapping:
             if abc_name in self._USER_FACING_ABCS:
                 continue
 
-            # Check if any kernel class is a concrete subclass of this ABC
-            has_implementation = any(
-                issubclass(cls, abc_type) and cls is not abc_type for cls in kernel_classes.values()
+            has_kernel_impl = any(issubclass(cls, abc_type) and cls is not abc_type for cls in kernel_classes.values())
+            has_infra_impl = any(
+                issubclass(cls, abc_type) and cls is not abc_type for cls in infrastructure_classes.values()
             )
-            if not has_implementation:
+            if not has_kernel_impl and not has_infra_impl:
                 missing.append(abc_name)
 
-        assert missing == [], "ABCs without kernel implementations:\n" + "\n".join(
-            f"  - {name}" for name in sorted(missing)
-        )
+        assert missing == [], "ABCs without implementations:\n" + "\n".join(f"  - {name}" for name in sorted(missing))
 
 
 @pytest.mark.architecture

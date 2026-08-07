@@ -58,15 +58,19 @@ def _sha256_of(content: bytes) -> str:
 
 
 class _FakeDbProvider(DatabaseProvider):
-    """A fake DatabaseProvider backed by file-based SQLite engines."""
+    """A fake DatabaseProvider backed by in-memory SQLite engines."""
 
     def __init__(self) -> None:
         self._engines: dict[str, object] = {}
         self._factories: dict[str, async_sessionmaker[AsyncSession]] = {}
 
-    async def add_database(self, db_name: str, db_path: str) -> None:
-        """Create an engine and session factory for the given database name."""
-        url = f"sqlite+aiosqlite:///{db_path}"
+    async def add_database(self, db_name: str, db_path: str = "") -> None:
+        """Create an in-memory engine and session factory for the given database name.
+
+        The db_path parameter is accepted for API compatibility but ignored;
+        all databases use in-memory SQLite for speed.
+        """
+        url = "sqlite+aiosqlite://"
         engine = create_async_engine(url, echo=False)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -78,6 +82,46 @@ class _FakeDbProvider(DatabaseProvider):
         """Return a new session for the named database."""
         if db_name not in self._factories:
             msg = f"Database '{db_name}' not configured in fake provider"
+            raise RuntimeError(msg)
+        return self._factories[db_name]()
+
+    async def dispose(self) -> None:
+        """Dispose all engines."""
+        for engine in self._engines.values():
+            await engine.dispose()  # type: ignore[union-attr]
+        self._engines.clear()
+        self._factories.clear()
+
+    async def health_check(self) -> dict[str, bool]:
+        """Return health status for all databases."""
+        return dict.fromkeys(self._engines, True)
+
+
+class _FileDbProvider(DatabaseProvider):
+    """A fake DatabaseProvider backed by file-based SQLite engines.
+
+    Used only for tests that require actual file existence checks (e.g.
+    cache.db deletion and recreation).
+    """
+
+    def __init__(self) -> None:
+        self._engines: dict[str, object] = {}
+        self._factories: dict[str, async_sessionmaker[AsyncSession]] = {}
+
+    async def add_database(self, db_name: str, db_path: str) -> None:
+        """Create a file-based engine and session factory."""
+        url = f"sqlite+aiosqlite:///{db_path}"
+        engine = create_async_engine(url, echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        self._engines[db_name] = engine
+        self._factories[db_name] = factory
+
+    async def get_session(self, db_name: str) -> AsyncSession:  # type: ignore[override]
+        """Return a new session for the named database."""
+        if db_name not in self._factories:
+            msg = f"Database '{db_name}' not configured in file provider"
             raise RuntimeError(msg)
         return self._factories[db_name]()
 
@@ -128,10 +172,9 @@ class TestDownloadRecoveryStateMachine:
 
             with tempfile.TemporaryDirectory() as tmp_dir:
                 base_path = Path(tmp_dir)
-                mirror_db_path = base_path / "mirror.db"
 
                 db_provider = _FakeDbProvider()
-                await db_provider.add_database("mirror", str(mirror_db_path))
+                await db_provider.add_database("mirror")
 
                 # Insert a DOWNLOADING entry
                 session = await db_provider.get_session("mirror")
@@ -217,8 +260,6 @@ class TestCacheIntegrityVerification:
                 base_path = Path(tmp_dir)
                 mirror_dir = base_path / "mirror"
                 mirror_dir.mkdir(parents=True)
-                mirror_db_path = base_path / "mirror.db"
-                cache_db_path = base_path / "cache.db"
 
                 file_path = mirror_dir / "test_file.deb"
                 file_path.write_bytes(file_content)
@@ -227,8 +268,8 @@ class TestCacheIntegrityVerification:
                 stored_sha256 = "b" * 64 if mismatch else actual_sha256
 
                 db_provider = _FakeDbProvider()
-                await db_provider.add_database("mirror", str(mirror_db_path))
-                await db_provider.add_database("cache", str(cache_db_path))
+                await db_provider.add_database("mirror")
+                await db_provider.add_database("cache")
 
                 session = await db_provider.get_session("mirror")
                 try:
@@ -294,8 +335,6 @@ class TestCacheCorruptionMarking:
                 base_path = Path(tmp_dir)
                 mirror_dir = base_path / "mirror"
                 mirror_dir.mkdir(parents=True)
-                mirror_db_path = base_path / "mirror.db"
-                cache_db_path = base_path / "cache.db"
 
                 file_path = mirror_dir / "cached_file.deb"
                 file_path.write_bytes(file_content)
@@ -304,8 +343,8 @@ class TestCacheCorruptionMarking:
                 wrong_sha256 = "c" * 64
 
                 db_provider = _FakeDbProvider()
-                await db_provider.add_database("mirror", str(mirror_db_path))
-                await db_provider.add_database("cache", str(cache_db_path))
+                await db_provider.add_database("mirror")
+                await db_provider.add_database("cache")
 
                 session = await db_provider.get_session("mirror")
                 try:
@@ -397,7 +436,7 @@ class TestCacheDbDeletionRecovery:
                 mirror_db_path = base_path / "mirror.db"
                 cache_db_path = base_path / "cache.db"
 
-                db_provider = _FakeDbProvider()
+                db_provider = _FileDbProvider()
                 await db_provider.add_database("mirror", str(mirror_db_path))
                 await db_provider.add_database("cache", str(cache_db_path))
 
@@ -426,7 +465,7 @@ class TestCacheDbDeletionRecovery:
                 assert not cache_db_path.exists()
 
                 # Re-create provider — SQLite will recreate cache.db
-                db_provider2 = _FakeDbProvider()
+                db_provider2 = _FileDbProvider()
                 await db_provider2.add_database("mirror", str(mirror_db_path))
                 await db_provider2.add_database("cache", str(cache_db_path))
 
@@ -497,8 +536,6 @@ class TestCacheMetadataConflictResolution:
                 base_path = Path(tmp_dir)
                 mirror_dir = base_path / "mirror"
                 mirror_dir.mkdir(parents=True)
-                mirror_db_path = base_path / "mirror.db"
-                cache_db_path = base_path / "cache.db"
 
                 file_path = mirror_dir / "conflict_file.deb"
                 file_path.write_bytes(file_content)
@@ -510,8 +547,8 @@ class TestCacheMetadataConflictResolution:
                     stored_mirror_sha = "e" * 64
 
                 db_provider = _FakeDbProvider()
-                await db_provider.add_database("mirror", str(mirror_db_path))
-                await db_provider.add_database("cache", str(cache_db_path))
+                await db_provider.add_database("mirror")
+                await db_provider.add_database("cache")
 
                 session = await db_provider.get_session("mirror")
                 try:

@@ -1,0 +1,20 @@
+# Mirror sync configuration for the local test repository.
+#
+# Use with: debcraft mirror sync --config fixtures/test-repo.toml
+#
+# Requires the local HTTP server to be running:
+#   cd fixtures/repositories && python3 -m http.server 8080
+
+[settings]
+download_timeout = 30
+max_connections_per_repo = 1
+max_total_connections = 10
+rate_limit_rps = 10.0
+rate_limit_burst = 5
+
+[[repository]]
+name = "test-repo"
+base_url = "http://localhost:8080/test-repo"
+suites = ["stable"]
+components = ["main"]
+architectures = ["amd64", "arm64"]

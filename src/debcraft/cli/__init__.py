@@ -1,5 +1,6 @@
 """Command-line interface for DebCraft."""
 
+import logging
 import os
 import platform
 import sys
@@ -15,6 +16,10 @@ from debcraft.version import VERSION
 
 app = typer.Typer(name="debcraft", help="DebCraft - Artifact Intelligence Platform")
 console = Console()
+
+from debcraft.cli.mirror import mirror_app  # noqa: E402
+
+app.add_typer(mirror_app, name="mirror")
 
 
 @dataclass
@@ -115,9 +120,58 @@ def _gather_environment_info() -> EnvironmentInfo:
     )
 
 
+class _StructuredFormatter(logging.Formatter):
+    """Log formatter that appends structured extra fields as key=value pairs.
+
+    Renders both standard extra dict fields (used by download.py) and
+    the extra_data dict (used by _CliLogger in mirror.py) so that
+    structured context like url, status_code, and retry_count appears
+    in verbose output.
+    """
+
+    _BUILTIN_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = f"{record.levelname} {record.name}: {record.getMessage()}"
+
+        # Collect extra fields from _CliLogger (extra_data dict)
+        extra_data = getattr(record, "extra_data", None)
+        if isinstance(extra_data, dict) and extra_data:
+            pairs = " ".join(f"{k}={v}" for k, v in extra_data.items() if v is not None)
+            if pairs:
+                return f"{base} {pairs}"
+
+        # Collect extra fields passed directly via extra={...} (download.py)
+        extras = {k: v for k, v in record.__dict__.items() if k not in self._BUILTIN_ATTRS and v is not None}
+        if extras:
+            pairs = " ".join(f"{k}={v}" for k, v in extras.items())
+            if pairs:
+                return f"{base} {pairs}"
+
+        return base
+
+
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose (DEBUG) logging."),
+) -> None:
     """DebCraft - Artifact Intelligence Platform."""
+    logger = logging.getLogger("debcraft")
+
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.WARNING)
+
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(_StructuredFormatter())
+        logger.addHandler(handler)
+
+    logger.propagate = False
+
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 
