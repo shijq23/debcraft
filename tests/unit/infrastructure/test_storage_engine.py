@@ -7,6 +7,7 @@ and async context manager behavior using mocked StorageProvider and EventBus.
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -133,7 +134,7 @@ class TestInitializeWritabilityCheck:
 
         mock_provider.check_writable.side_effect = check_writable_side_effect
 
-        with pytest.raises(StorageError, match="/fake/config"):
+        with pytest.raises(StorageError, match=re.escape(str(Path("/fake/config")))):
             await engine.initialize()
 
     @pytest.mark.asyncio

@@ -8,7 +8,7 @@ platform-specific base directory with the correct subdirectory suffix.
 """
 
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import get_args
 
 import pytest
@@ -109,7 +109,7 @@ class TestXdgPathResolutionProperty:
             environ = {"HOME": "/home/testuser"}
 
         result = resolve_xdg_path(purpose, environ=environ, platform=platform)  # type: ignore[arg-type]
-        assert result.is_absolute()
+        assert PurePosixPath(result.as_posix()).is_absolute()
 
     @settings(max_examples=200)
     @given(

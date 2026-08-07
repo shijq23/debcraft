@@ -94,7 +94,7 @@ class TestTemporaryFileCleanupProperty:
                 # Create the file
                 file_path = workspace / name
                 try:
-                    file_path.write_text(f"content of {name}")
+                    file_path.write_text(f"content of {name}", encoding="utf-8")
                 except OSError:
                     # Skip files that can't be created (invalid names on some OS)
                     continue

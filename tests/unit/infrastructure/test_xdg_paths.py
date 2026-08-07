@@ -6,7 +6,7 @@ for all storage purposes, with and without XDG environment variables.
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -54,7 +54,7 @@ class TestLinuxDefaultPaths:
         env = self._env()
         for purpose in ("mirror", "workspace", "outputs", "logs", "cache", "database", "config"):
             result = resolve_xdg_path(purpose, environ=env, platform="linux")  # type: ignore[arg-type]
-            assert result.is_absolute(), f"{purpose} path is not absolute: {result}"
+            assert PurePosixPath(result.as_posix()).is_absolute(), f"{purpose} path is not absolute: {result}"
 
 
 @pytest.mark.unit
@@ -158,7 +158,7 @@ class TestMacOSFallbackPaths:
         env = self._env()
         for purpose in ("mirror", "workspace", "outputs", "logs", "cache", "database", "config"):
             result = resolve_xdg_path(purpose, environ=env, platform="darwin")  # type: ignore[arg-type]
-            assert result.is_absolute(), f"{purpose} path is not absolute: {result}"
+            assert PurePosixPath(result.as_posix()).is_absolute(), f"{purpose} path is not absolute: {result}"
 
 
 @pytest.mark.unit
@@ -238,4 +238,4 @@ class TestWindowsFallbackPaths:
         env = self._env()
         for purpose in ("mirror", "workspace", "outputs", "logs", "cache", "database", "config"):
             result = resolve_xdg_path(purpose, environ=env, platform="win32")  # type: ignore[arg-type]
-            assert result.is_absolute(), f"{purpose} path is not absolute: {result}"
+            assert PurePosixPath(result.as_posix()).is_absolute(), f"{purpose} path is not absolute: {result}"
