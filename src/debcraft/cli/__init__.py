@@ -16,6 +16,10 @@ from debcraft.version import VERSION
 app = typer.Typer(name="debcraft", help="DebCraft - Artifact Intelligence Platform")
 console = Console()
 
+from debcraft.cli.mirror import mirror_app  # noqa: E402
+
+app.add_typer(mirror_app, name="mirror")
+
 
 @dataclass
 class DoctorCheck:

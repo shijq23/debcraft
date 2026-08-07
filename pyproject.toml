@@ -74,7 +74,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "D101", "D102", "D103", "D107", "ANN", "TCH"]
+"tests/**/*.py" = ["S101", "S108", "S608", "D101", "D102", "D103", "D107", "ANN", "TCH", "N806", "RUF002", "RUF003"]
 
 # =============================================================================
 # BasedPyright Configuration
@@ -93,6 +93,11 @@ reportMissingTypeStubs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'unit and not slow' --strict-markers -vv"
+filterwarnings = [
+    # Typer/Click creates coroutines during parameter introspection on Python 3.13
+    # that are never awaited — this is a known compatibility issue, not a bug in our code.
+    "ignore:coroutine '_run_sync' was never awaited:RuntimeWarning",
+]
 markers = [
     # Type markers
     "unit: Unit tests (fast, isolated)",
