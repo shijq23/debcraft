@@ -55,6 +55,7 @@ Fix two bugs: (1) SQLAlchemy mapper fails to resolve `ScanSession` relationship 
     - Replace the empty `__init__.py` at `src/debcraft/infrastructure/models/__init__.py` with:
       ```python
       """SQLAlchemy ORM entity models."""
+
       from debcraft.infrastructure.models import cache, metadata, mirror, scan  # noqa: F401
       ```
     - This ensures that when any code imports from the models package, all modules are loaded and SQLAlchemy's mapper can resolve all string-based relationship references

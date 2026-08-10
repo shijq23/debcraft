@@ -349,14 +349,10 @@ arch_sets = st.lists(architectures, min_size=1, max_size=4, unique=True)
 suites = st.sampled_from(["stable", "unstable", "testing", "bookworm", "trixie"])
 
 # Dependency strings
-dependencies = st.lists(
-    st.from_regex(r"[a-z][a-z0-9\-]{1,20}", fullmatch=True),
-    min_size=0, max_size=3
-).map(", ".join)
+dependencies = st.lists(st.from_regex(r"[a-z][a-z0-9\-]{1,20}", fullmatch=True), min_size=0, max_size=3).map(", ".join)
 
 # Descriptions (safe ASCII)
-descriptions = st.text(
-    alphabet=st.characters(whitelist_categories=("L", "N", "Z")),
-    min_size=1, max_size=80
-).filter(lambda s: s.strip())
+descriptions = st.text(alphabet=st.characters(whitelist_categories=("L", "N", "Z")), min_size=1, max_size=80).filter(
+    lambda s: s.strip()
+)
 ```

@@ -14,6 +14,37 @@ if TYPE_CHECKING:
     from debcraft.infrastructure.models.scan import ScanSession
 
 
+class FileOwnership(Base, TimestampMixin):
+    """File-to-package ownership mapping from Contents files."""
+
+    __tablename__ = "file_ownerships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("repository_snapshots.id"),
+        nullable=False,
+        index=True,
+    )
+    file_path: Mapped[str] = mapped_column(String(2048), nullable=False, index=True)
+    package_name: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+
+    snapshot: Mapped[RepositorySnapshot] = relationship(back_populates="file_ownerships")
+
+
+class IndexingRecord(Base):
+    """Tracks which repository files have been indexed and with which parser version."""
+
+    __tablename__ = "indexing_records"
+    __table_args__ = (UniqueConstraint("repository_file_id", name="uq_indexing_records_file_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    repository_file_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    parser_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    indexed_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Repository(Base, TimestampMixin):
     """A Debian package repository (e.g. debian bookworm main)."""
 
@@ -57,6 +88,10 @@ class RepositorySnapshot(Base, TimestampMixin):
         back_populates="snapshot",
         cascade="all, delete-orphan",
     )
+    file_ownerships: Mapped[list[FileOwnership]] = relationship(
+        back_populates="snapshot",
+        cascade="all, delete-orphan",
+    )
 
 
 class PackageInstance(Base, TimestampMixin):
@@ -87,6 +122,17 @@ class PackageInstance(Base, TimestampMixin):
         index=True,
     )
 
+    source_package: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    source_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    homepage: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    maintainer: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    depends: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    provides: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    section: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    priority: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    download_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
     snapshot: Mapped[RepositorySnapshot] = relationship(back_populates="packages")
     license_expressions: Mapped[list[LicenseExpression]] = relationship(
         back_populates="package",
@@ -104,6 +150,16 @@ class SourcePackage(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     version: Mapped[str] = mapped_column(String(128), nullable=False)
     maintainer: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    uploaders: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    section: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    homepage: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    build_depends: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    binary_packages: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    snapshot_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("repository_snapshots.id"),
+        nullable=True,
+    )
 
 
 class LicenseExpression(Base, TimestampMixin):

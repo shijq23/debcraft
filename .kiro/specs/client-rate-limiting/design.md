@@ -130,8 +130,8 @@ class MirrorConfig:
     download_timeout: int = 300
     max_connections_per_repo: int = 20
     max_total_connections: int = 60
-    rate_limit_rps: float = 50.0          # NEW
-    rate_limit_burst: int | None = None    # NEW: None means "use max_connections_per_repo"
+    rate_limit_rps: float = 50.0  # NEW
+    rate_limit_burst: int | None = None  # NEW: None means "use max_connections_per_repo"
 ```
 
 The `rate_limit_burst` default of `None` is resolved at runtime to `max_connections_per_repo` (matching Requirement 2.4). This avoids field-ordering issues with frozen dataclasses.

@@ -554,6 +554,7 @@ def bootstrap() -> Container:
 @dataclass(frozen=True)
 class DomainEvent:
     """Base domain event."""
+
     event_type: str
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     correlation_id: UUID = field(default_factory=uuid4)
@@ -562,6 +563,7 @@ class DomainEvent:
 @dataclass(frozen=True)
 class WorkflowStartedEvent(DomainEvent):
     """Published when a workflow transitions to Running."""
+
     event_type: str = "workflow.started"
     workflow_name: str = ""
     workflow_id: UUID = field(default_factory=uuid4)
@@ -570,6 +572,7 @@ class WorkflowStartedEvent(DomainEvent):
 @dataclass(frozen=True)
 class WorkflowCompletedEvent(DomainEvent):
     """Published when a workflow transitions to Completed."""
+
     event_type: str = "workflow.completed"
     workflow_name: str = ""
     workflow_id: UUID = field(default_factory=uuid4)
@@ -579,6 +582,7 @@ class WorkflowCompletedEvent(DomainEvent):
 @dataclass(frozen=True)
 class WorkflowFailedEvent(DomainEvent):
     """Published when a workflow transitions to Failed."""
+
     event_type: str = "workflow.failed"
     workflow_name: str = ""
     workflow_id: UUID = field(default_factory=uuid4)
@@ -588,6 +592,7 @@ class WorkflowFailedEvent(DomainEvent):
 @dataclass(frozen=True)
 class WorkflowCancelledEvent(DomainEvent):
     """Published when a workflow transitions to Cancelled."""
+
     event_type: str = "workflow.cancelled"
     workflow_name: str = ""
     workflow_id: UUID = field(default_factory=uuid4)
@@ -599,6 +604,7 @@ class WorkflowCancelledEvent(DomainEvent):
 @dataclass(frozen=True)
 class LoggingConfig:
     """Configuration for the logging subsystem."""
+
     level: str = "INFO"
     format: str = "human"  # "human" or "json"
 
@@ -606,6 +612,7 @@ class LoggingConfig:
 @dataclass(frozen=True)
 class ExecutionConfig:
     """Configuration for default execution policies."""
+
     max_concurrency: int = 4
     retry_count: int = 0
     retry_backoff_seconds: float = 1.0
@@ -616,6 +623,7 @@ class ExecutionConfig:
 @dataclass(frozen=True)
 class PlatformConfig:
     """Top-level platform configuration."""
+
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
 ```
@@ -626,6 +634,7 @@ class PlatformConfig:
 @dataclass(frozen=True)
 class WorkflowSummary:
     """Generated when a workflow reaches a terminal state."""
+
     workflow_name: str
     start_time: datetime
     end_time: datetime
@@ -638,6 +647,7 @@ class WorkflowSummary:
 ```python
 class Lifetime(Enum):
     """Service lifetime within the container."""
+
     SINGLETON = "singleton"
     TRANSIENT = "transient"
     SCOPED = "scoped"
@@ -646,6 +656,7 @@ class Lifetime(Enum):
 @dataclass
 class ServiceRegistration:
     """Internal registration record."""
+
     interface: type
     implementation: type
     lifetime: Lifetime
@@ -815,29 +826,38 @@ class ServiceRegistration:
 class PlatformError(Exception):
     """Base exception for all platform kernel errors."""
 
+
 class ContainerError(PlatformError):
     """Base for DI container errors."""
+
 
 class ServiceNotFoundError(ContainerError):
     """Raised when resolving a service type with no registration."""
 
+
 class CircularDependencyError(ContainerError):
     """Raised when a circular dependency chain is detected."""
+
 
 class ConfigurationError(PlatformError):
     """Base for configuration errors."""
 
+
 class ConfigurationSyntaxError(ConfigurationError):
     """Raised when a config file has TOML syntax errors."""
+
 
 class ConfigurationValidationError(ConfigurationError):
     """Raised when config values fail validation."""
 
+
 class WorkflowError(PlatformError):
     """Base for workflow errors."""
 
+
 class WorkflowTimeoutError(WorkflowError):
     """Raised when a workflow exceeds its timeout."""
+
 
 class ResourceCleanupError(PlatformError):
     """Raised when resource cleanup fails (logged, not propagated)."""

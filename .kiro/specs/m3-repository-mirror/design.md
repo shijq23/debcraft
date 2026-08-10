@@ -123,17 +123,20 @@ src/debcraft/
 @dataclass(frozen=True)
 class RepositoryConfig:
     """Configuration for a single repository to mirror."""
-    name: str                    # Unique 1-128 chars
-    base_url: str                # HTTPS URL
-    suites: list[str]            # 1-20 entries
-    components: list[str]        # 1-50 entries
-    architectures: list[str]     # 1-20 entries
+
+    name: str  # Unique 1-128 chars
+    base_url: str  # HTTPS URL
+    suites: list[str]  # 1-20 entries
+    components: list[str]  # 1-50 entries
+    architectures: list[str]  # 1-20 entries
+
 
 @dataclass(frozen=True)
 class MirrorConfig:
     """Top-level mirror configuration."""
+
     repositories: list[RepositoryConfig]
-    download_timeout: int = 300          # seconds, 30-3600
+    download_timeout: int = 300  # seconds, 30-3600
     max_connections_per_repo: int = 20
     max_total_connections: int = 60
 ```
@@ -144,20 +147,25 @@ class MirrorConfig:
 @dataclass(frozen=True)
 class FileEntry:
     """A file listed in Release or Packages metadata."""
+
     relative_path: str
     sha256: str
     size_bytes: int
 
+
 @dataclass(frozen=True)
 class SyncDecision:
     """Result of comparing remote vs local file state."""
+
     file_entry: FileEntry
     action: Literal["download", "skip", "verify"]
     reason: str
 
+
 @dataclass(frozen=True)
 class DownloadResult:
     """Outcome of a single file download attempt."""
+
     url: str
     success: bool
     sha256_verified: bool
@@ -183,9 +191,11 @@ class ReleaseParser:
         """
         ...
 
+
 @dataclass(frozen=True)
 class ReleaseMetadata:
     """Parsed content of a Release file."""
+
     files: list[FileEntry]
     # Additional metadata fields (Date, Codename, etc.)
     date: str | None = None
@@ -705,14 +715,17 @@ All mirror events extend `DomainEvent` from `platform/contracts/events.py`:
 @dataclass(frozen=True)
 class MirrorSyncStartedEvent(DomainEvent):
     """Published when a synchronization session begins."""
+
     event_type: str = "mirror.sync.started"
     repository_name: str = ""
     session_id: str = ""
     suites: tuple[str, ...] = ()
 
+
 @dataclass(frozen=True)
 class MirrorSyncCompletedEvent(DomainEvent):
     """Published when synchronization completes successfully."""
+
     event_type: str = "mirror.sync.completed"
     repository_name: str = ""
     session_id: str = ""
@@ -722,18 +735,22 @@ class MirrorSyncCompletedEvent(DomainEvent):
     bytes_transferred: int = 0
     duration_seconds: float = 0.0
 
+
 @dataclass(frozen=True)
 class MirrorSyncFailedEvent(DomainEvent):
     """Published when synchronization fails."""
+
     event_type: str = "mirror.sync.failed"
     repository_name: str = ""
     session_id: str = ""
     error_message: str = ""
     files_failed: int = 0
 
+
 @dataclass(frozen=True)
 class SnapshotPublishedEvent(DomainEvent):
     """Published when a RepositorySnapshot is published."""
+
     event_type: str = "mirror.snapshot.published"
     snapshot_id: int = 0
     repository_name: str = ""
@@ -750,42 +767,59 @@ class SnapshotPublishedEvent(DomainEvent):
 class MirrorError(PlatformError):
     """Base for all mirror-specific errors."""
 
+
 class ConfigurationError(MirrorError):
     """Invalid mirrors.toml content."""
+
     line_number: int | None  # TOML parse error location
+
 
 class ReleaseParseError(MirrorError):
     """Malformed Release file content."""
+
     url: str
+
 
 class DownloadError(MirrorError):
     """Base for download failures."""
+
     url: str
     retry_count: int
 
+
 class HttpClientError(DownloadError):
     """4xx response — non-retriable."""
+
     status_code: int
+
 
 class HttpServerError(DownloadError):
     """5xx response — retriable."""
+
     status_code: int
+
 
 class NetworkError(DownloadError):
     """Connection refused/timeout — retriable."""
 
+
 class ChecksumMismatchError(DownloadError):
     """SHA256 verification failed."""
+
     expected: str
     actual: str
 
+
 class SizeMismatchError(DownloadError):
     """File size doesn't match metadata."""
+
     expected_bytes: int
     actual_bytes: int
 
+
 class DiskSpaceError(MirrorError):
     """Insufficient disk space."""
+
     required_bytes: int
     available_bytes: int
 ```
@@ -821,7 +855,7 @@ delay = min(base * 2^attempt, max_backoff) + random_jitter
 # Per-repository connector with limit
 connector = aiohttp.TCPConnector(
     limit_per_host=config.max_connections_per_repo,  # 20
-    limit=config.max_total_connections,               # 60
+    limit=config.max_total_connections,  # 60
     enable_cleanup_closed=True,
     ttl_dns_cache=300,
 )

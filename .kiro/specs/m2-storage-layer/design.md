@@ -275,12 +275,10 @@ class UnitOfWork(ABC):
         ...
 
     @abstractmethod
-    async def __aenter__(self) -> "UnitOfWork":
-        ...
+    async def __aenter__(self) -> "UnitOfWork": ...
 
     @abstractmethod
-    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> bool:
-        ...
+    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> bool: ...
 
 
 class DatabaseProvider(ABC):
@@ -412,9 +410,11 @@ class StorageInitializedEvent(DomainEvent):
     event_type: str = "storage.initialized"
     base_path: str = ""
 
+
 @dataclass(frozen=True)
 class StorageShutdownEvent(DomainEvent):
     event_type: str = "storage.shutdown"
+
 
 @dataclass(frozen=True)
 class MigrationAppliedEvent(DomainEvent):
@@ -760,12 +760,14 @@ class StorageError(PlatformError):
 
 class DatabaseConnectionError(StorageError):
     """Raised when a database engine or session cannot be created."""
+
     db_name: str
     failure_type: str  # "corruption" | "permission_denied" | "not_found"
 
 
 class EntityNotFoundError(StorageError):
     """Raised when get_by_id or get_by_natural_key finds no match."""
+
     entity_type: str
     key_name: str
     key_value: object
@@ -773,18 +775,21 @@ class EntityNotFoundError(StorageError):
 
 class ImmutableEntityError(StorageError):
     """Raised when update/delete is attempted on a published snapshot."""
+
     entity_type: str
     entity_id: int
 
 
 class MigrationError(StorageError):
     """Raised when a migration fails execution."""
+
     migration_version: int
     db_name: str
 
 
 class StorageTimeoutError(StorageError):
     """Raised when shutdown or disposal exceeds the configured timeout."""
+
     timeout_seconds: float
 ```
 

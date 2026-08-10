@@ -108,6 +108,7 @@ Assuming our root cause analysis is correct:
 ```python
 from sqlalchemy.exc import OperationalError
 
+
 @staticmethod
 async def _get_schema_version(session: AsyncSession) -> int:
     """Query the highest applied migration version from metadata.db.

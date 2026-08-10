@@ -47,6 +47,11 @@ Package: /path/to/debcraft
 VEnv: /path/to/.venv
 ```
 
+## Troubleshooting
+
+See [Troubleshooting](troubleshooting.md) for diagnostic commands and
+common issues with the mirror and indexer.
+
 ## Getting Help
 
 Every command supports `--help` for detailed usage information:

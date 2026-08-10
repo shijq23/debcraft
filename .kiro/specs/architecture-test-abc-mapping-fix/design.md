@@ -131,13 +131,9 @@ Assuming our root cause analysis is correct:
        for abc_name, abc_type in contract_abcs.items():
            if abc_name in self._USER_FACING_ABCS:
                continue
-           has_kernel_impl = any(
-               issubclass(cls, abc_type) and cls is not abc_type
-               for cls in kernel_classes.values()
-           )
+           has_kernel_impl = any(issubclass(cls, abc_type) and cls is not abc_type for cls in kernel_classes.values())
            has_infra_impl = any(
-               issubclass(cls, abc_type) and cls is not abc_type
-               for cls in infrastructure_classes.values()
+               issubclass(cls, abc_type) and cls is not abc_type for cls in infrastructure_classes.values()
            )
            if not has_kernel_impl and not has_infra_impl:
                missing.append(abc_name)

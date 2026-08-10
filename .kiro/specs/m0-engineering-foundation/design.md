@@ -139,13 +139,16 @@ import typer
 
 app = typer.Typer(name="debcraft", help="DebCraft - Artifact Intelligence Platform")
 
+
 @app.command()
 def version() -> None:
     """Display the current DebCraft version."""
 
+
 @app.command()
 def doctor() -> None:
     """Check environment health and report status."""
+
 
 @app.command()
 def info() -> None:

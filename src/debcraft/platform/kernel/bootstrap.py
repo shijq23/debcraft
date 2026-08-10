@@ -48,11 +48,11 @@ def bootstrap() -> Container:
     # via constructor injection.
     container.register_instance(Container, container)
 
-    container.register_singleton(ConfigurationService, KernelConfigurationService)
-    container.register_singleton(EventBus, KernelEventBus)
-    container.register_singleton(LoggerFactory, KernelLoggerFactory)
-    container.register_singleton(WorkflowEngine, KernelWorkflowEngine)
-    container.register_singleton(WorkflowFactory, KernelWorkflowFactory)
-    container.register_scoped(ResourceManager, KernelResourceManager)
+    container.register_singleton(ConfigurationService, KernelConfigurationService)  # type: ignore[type-abstract]
+    container.register_singleton(EventBus, KernelEventBus)  # type: ignore[type-abstract]
+    container.register_singleton(LoggerFactory, KernelLoggerFactory)  # type: ignore[type-abstract]
+    container.register_singleton(WorkflowEngine, KernelWorkflowEngine)  # type: ignore[type-abstract]
+    container.register_singleton(WorkflowFactory, KernelWorkflowFactory)  # type: ignore[type-abstract]
+    container.register_scoped(ResourceManager, KernelResourceManager)  # type: ignore[type-abstract]
 
     return container

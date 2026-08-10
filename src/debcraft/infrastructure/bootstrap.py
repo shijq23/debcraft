@@ -47,11 +47,11 @@ async def storage_bootstrap(container: Container) -> None:
         container: The M1 dependency injection container to register services in.
     """
     # Singletons — one instance shared across the entire application
-    container.register_singleton(StorageEngine, DefaultStorageEngine)
-    container.register_singleton(DatabaseProvider, SqliteDatabaseProvider)
+    container.register_singleton(StorageEngine, DefaultStorageEngine)  # type: ignore[type-abstract]
+    container.register_singleton(DatabaseProvider, SqliteDatabaseProvider)  # type: ignore[type-abstract]
 
     # Scoped — one instance per scope (workflow)
-    container.register_scoped(UnitOfWork, SqliteUnitOfWork)
+    container.register_scoped(UnitOfWork, SqliteUnitOfWork)  # type: ignore[type-abstract]
 
     # Repository implementations — scoped, one per workflow scope
     container.register_scoped(RepositoryFileRepository)

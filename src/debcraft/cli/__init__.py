@@ -21,6 +21,10 @@ from debcraft.cli.mirror import mirror_app  # noqa: E402
 
 app.add_typer(mirror_app, name="mirror")
 
+from debcraft.cli.index import index_app  # noqa: E402
+
+app.add_typer(index_app, name="index")
+
 
 @dataclass
 class DoctorCheck:
@@ -139,14 +143,23 @@ class _StructuredFormatter(logging.Formatter):
         if isinstance(extra_data, dict) and extra_data:
             pairs = " ".join(f"{k}={v}" for k, v in extra_data.items() if v is not None)
             if pairs:
-                return f"{base} {pairs}"
+                base = f"{base} {pairs}"
 
-        # Collect extra fields passed directly via extra={...} (download.py)
-        extras = {k: v for k, v in record.__dict__.items() if k not in self._BUILTIN_ATTRS and v is not None}
-        if extras:
-            pairs = " ".join(f"{k}={v}" for k, v in extras.items())
-            if pairs:
-                return f"{base} {pairs}"
+        else:
+            # Collect extra fields passed directly via extra={...} (download.py)
+            extras = {k: v for k, v in record.__dict__.items() if k not in self._BUILTIN_ATTRS and v is not None}
+            if extras:
+                pairs = " ".join(f"{k}={v}" for k, v in extras.items())
+                if pairs:
+                    base = f"{base} {pairs}"
+
+        # Append exception traceback if present
+        if record.exc_info and record.exc_info[0] is not None:
+            base = base + "\n" + self.formatException(record.exc_info)
+        if record.exc_text:
+            base = base + "\n" + record.exc_text
+        if record.stack_info:
+            base = base + "\n" + self.formatStack(record.stack_info)
 
         return base
 

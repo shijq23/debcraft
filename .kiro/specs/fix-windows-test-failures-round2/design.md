@@ -67,9 +67,8 @@ assert PurePosixPath(result_relative.as_posix()) == expected
 import re
 import sys
 
-_WINDOWS_RESERVED_RE = re.compile(
-    r"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..+)?$", re.IGNORECASE
-)
+_WINDOWS_RESERVED_RE = re.compile(r"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..+)?$", re.IGNORECASE)
+
 
 def _is_windows_reserved(name: str) -> bool:
     """Return True if name is a Windows reserved device name."""
@@ -137,22 +136,19 @@ _skip_windows_permissions = pytest.mark.skipif(
     reason="NTFS does not support Unix file permissions",
 )
 
+
 class TestSetFileMode:
     @_skip_windows_permissions
-    def test_sets_0o644_mode(self, tmp_path):
-        ...
+    def test_sets_0o644_mode(self, tmp_path): ...
 
     @_skip_windows_permissions
-    def test_mode_allows_owner_read_write(self, tmp_path):
-        ...
+    def test_mode_allows_owner_read_write(self, tmp_path): ...
 
     @_skip_windows_permissions
-    def test_mode_allows_group_read(self, tmp_path):
-        ...
+    def test_mode_allows_group_read(self, tmp_path): ...
 
     @_skip_windows_permissions
-    def test_mode_allows_other_read(self, tmp_path):
-        ...
+    def test_mode_allows_other_read(self, tmp_path): ...
 ```
 
 The `test_file_mode_constant` test does NOT need skipping — it only checks the value of the `_FILE_MODE` constant (pure arithmetic), not actual filesystem behavior.
