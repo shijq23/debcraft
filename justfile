@@ -7,6 +7,7 @@ set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
 # Run tests
 test:
     uv run pytest
+    uv run pytest -m architecture
 
 # Run the mirror command
 mirror:
@@ -24,8 +25,10 @@ build:
 # Run linters (format check, ruff, pyright)
 lint:
     uv run ruff format --check .
-    uv run ruff check .
+    uv run ruff check --fix .
     uv run basedpyright
+    uv run mypy
+    uv run lint-imports
 
 # Clean build artifacts and caches
 clean:
@@ -34,5 +37,6 @@ clean:
     find . -type d -name "*.egg-info" -exec rm -rf {} +
     rm -rf .ruff_cache/
     rm -rf .pytest_cache/
+    rm -rf .mypy_cache/
     rm -rf .coverage
     rm -rf htmlcov/

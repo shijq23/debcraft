@@ -471,6 +471,6 @@ def _compute_backoff_delay(attempt: int) -> float:
     Returns:
         Delay in seconds before the next retry.
     """
-    delay = min(_BASE_BACKOFF * (2**attempt), _MAX_BACKOFF)
+    delay: float = min(_BASE_BACKOFF * (2**attempt), _MAX_BACKOFF)
     jitter = random.uniform(0, delay * _JITTER_FACTOR)  # noqa: S311
     return delay + jitter

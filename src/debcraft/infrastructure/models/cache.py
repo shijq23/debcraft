@@ -1,6 +1,6 @@
 """Entity models for cache.db — recomputable derived data."""
 
-from sqlalchemy import Boolean, Index, Integer, String, Text
+from sqlalchemy import Boolean, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from debcraft.infrastructure.models.base import Base, TimestampMixin
@@ -40,3 +40,21 @@ class ChecksumCache(Base, TimestampMixin):
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     computed_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ParsedDebPackage(Base, TimestampMixin):
+    """Cached .deb parse result keyed by file SHA256 and parser version."""
+
+    __tablename__ = "parsed_deb_packages"
+    __table_args__ = (
+        UniqueConstraint("sha256", "parser_version", name="uq_parsed_deb_sha256_version"),
+        Index("ix_parsed_deb_sha256", "sha256"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    parser_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    control_metadata: Mapped[str] = mapped_column(Text, nullable=False)  # JSON
+    dependencies: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+    copyright_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_listing: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import tomllib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from debcraft.domain.mirror.config import (
     MirrorConfig,
@@ -139,7 +139,7 @@ class ConfigReader:
 
         return self._build_config(data)
 
-    def _build_config(self, data: dict) -> MirrorConfig:
+    def _build_config(self, data: dict[str, Any]) -> MirrorConfig:
         """Build a MirrorConfig from parsed TOML dictionary.
 
         Args:
@@ -179,7 +179,7 @@ class ConfigReader:
             rate_limit_burst=rate_limit_burst,
         )
 
-    def _parse_rate_limit_rps(self, settings: dict) -> float:
+    def _parse_rate_limit_rps(self, settings: dict[str, Any]) -> float:
         """Parse and validate rate_limit_rps from settings.
 
         Args:
@@ -210,7 +210,7 @@ class ConfigReader:
 
         return value
 
-    def _parse_rate_limit_burst(self, settings: dict, default_burst: int) -> int:
+    def _parse_rate_limit_burst(self, settings: dict[str, Any], default_burst: int) -> int:
         """Parse and validate rate_limit_burst from settings.
 
         Args:

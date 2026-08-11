@@ -169,7 +169,7 @@ def _format_bytes(n: int) -> str:
         return f"{n / (1024 * 1024 * 1024):.1f} GiB"
 
 
-def _display_sync_summary(result: dict) -> None:
+def _display_sync_summary(result: dict[str, int]) -> None:
     """Display a Rich summary table with sync results.
 
     Args:
@@ -187,7 +187,7 @@ def _display_sync_summary(result: dict) -> None:
     console.print(table)
 
 
-async def _run_sync(config: MirrorConfig, progress: Progress, task_id: TaskID) -> dict:
+async def _run_sync(config: MirrorConfig, progress: Progress, task_id: TaskID) -> dict[str, int]:
     """Run the mirror synchronization workflow.
 
     Creates the download coordinator and mirror engine, then syncs each

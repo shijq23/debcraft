@@ -143,7 +143,7 @@ class KernelContainer(Container):
 
         # Return cached singleton if available
         if registration.lifetime == Lifetime.SINGLETON and service_type in self._singletons:
-            return self._singletons[service_type]  # type: ignore[return-value]
+            return self._singletons[service_type]  # type: ignore[no-any-return]
 
         # Circular dependency detection
         if service_type in self._resolution_stack:
@@ -232,7 +232,7 @@ class KernelScope(Scope):
 
         # Return cached scoped instance if available
         if registration.lifetime == Lifetime.SCOPED and service_type in self._scoped_instances:
-            return self._scoped_instances[service_type]  # type: ignore[return-value]
+            return self._scoped_instances[service_type]  # type: ignore[no-any-return]
 
         # Circular dependency detection
         if service_type in self._resolution_stack:

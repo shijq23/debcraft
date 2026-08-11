@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import os
 import stat
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from debcraft.platform.contracts.storage import StorageEngine
 
 # File mode: owner read/write, group read, others read (0o644)
@@ -54,7 +53,14 @@ def derive_mirror_root(storage_engine: StorageEngine, base_url: str) -> Path:
     url_path = parsed.path.strip("/")
     mirror_base = storage_engine.get_path("mirror")
     if url_path:
-        return mirror_base / hostname / url_path
+        # Encode standalone dot segments to prevent Path normalization.
+        # '.' becomes '%2E' and '..' becomes '%2E%2E'.
+        # Segments with dots in names (e.g., 'elxr3.0') are NOT affected
+        # since they don't equal '.' or '..' exactly.
+        segments = url_path.split("/")
+        safe_segments = ["%2E" if seg == "." else "%2E%2E" if seg == ".." else seg for seg in segments]
+        safe_path = "/".join(safe_segments)
+        return Path(f"{mirror_base}/{hostname}/{safe_path}")
     return mirror_base / hostname
 
 

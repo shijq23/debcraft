@@ -441,7 +441,7 @@ class KernelConfigurationService(ConfigurationService):
             ConfigurationValidationError: If the section type is not registered.
         """
         if section_type in self._instances:
-            return self._instances[section_type]  # type: ignore[return-value]
+            return self._instances[section_type]  # type: ignore[no-any-return]
 
         # Find the section key for this type
         section_key = self._find_section_key(section_type)

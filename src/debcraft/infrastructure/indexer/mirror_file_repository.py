@@ -179,9 +179,9 @@ class SqlAlchemyMirrorFileRepository:
 
         # Transition the file state to INDEXED in mirror.db
         async with self._mirror_session_factory() as session:
-            stmt = select(RepositoryFile).where(RepositoryFile.id == file_id)
-            result = await session.execute(stmt)
-            file_entity = result.scalar_one_or_none()
+            file_stmt = select(RepositoryFile).where(RepositoryFile.id == file_id)
+            file_result = await session.execute(file_stmt)
+            file_entity = file_result.scalar_one_or_none()
             if file_entity is not None:
                 file_entity.state = RepositoryFileState.INDEXED
                 file_entity.updated_at = datetime.now(UTC)

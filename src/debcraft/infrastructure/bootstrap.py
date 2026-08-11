@@ -64,6 +64,6 @@ async def storage_bootstrap(container: Container) -> None:
 
     # Acquire the StorageEngine via ResourceManager for deterministic lifecycle.
     # ResourceManager calls __aenter__ on initialization and __aexit__ on cleanup.
-    resource_manager = container.resolve(ResourceManager)
-    storage_engine = container.resolve(StorageEngine)
+    resource_manager = container.resolve(ResourceManager)  # type: ignore[type-abstract]
+    storage_engine = container.resolve(StorageEngine)  # type: ignore[type-abstract]
     await resource_manager.acquire_async(storage_engine)

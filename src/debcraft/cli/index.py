@@ -43,7 +43,9 @@ class _CliEventBus(EventBus):
         pass
 
 
-def _create_session_factories() -> tuple:
+def _create_session_factories() -> tuple[
+    async_sessionmaker[AsyncSession], async_sessionmaker[AsyncSession], AsyncEngine, AsyncEngine
+]:
     """Create async session factories for mirror.db and metadata.db.
 
     Returns:

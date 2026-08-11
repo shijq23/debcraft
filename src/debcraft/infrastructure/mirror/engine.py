@@ -302,8 +302,8 @@ class MirrorEngine:
             session = await self._db_provider.get_session("mirror")
             try:
                 stmt = select(RepositoryFile).where(RepositoryFile.url == inrelease_url)
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
+                db_result = await session.execute(stmt)
+                existing = db_result.scalar_one_or_none()
                 if existing is not None:
                     stored_etag = existing.etag
                     stored_last_modified = existing.last_modified

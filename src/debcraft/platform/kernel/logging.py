@@ -64,7 +64,7 @@ class _CorrelationIdFilter(_logging.Filter):
         Returns:
             Always True so the record is not filtered out.
         """
-        record.correlation_id = str(self._correlation_id)  # type: ignore[attr-defined]
+        record.correlation_id = str(self._correlation_id)
         return True
 
 
@@ -81,7 +81,7 @@ class _ContextCorrelationIdFilter(_logging.Filter):
             Always True so the record is not filtered out.
         """
         cid = _correlation_id_var.get()
-        record.correlation_id = str(cid) if cid is not None else ""  # type: ignore[attr-defined]
+        record.correlation_id = str(cid) if cid is not None else ""
         return True
 
 
@@ -264,7 +264,7 @@ class _ExtraDataFilter(_logging.Filter):
         """
         # The logging module places extra dict values directly on the record
         if not hasattr(record, "extra_data"):
-            record.extra_data = {}  # type: ignore[attr-defined]
+            record.extra_data = {}
         return True
 
 

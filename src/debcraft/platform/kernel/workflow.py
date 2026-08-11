@@ -144,7 +144,7 @@ class KernelWorkflowEngine(WorkflowEngine):
 
             # Create execution context
             scope = self._container.create_scope()
-            resource_manager = scope.resolve(ResourceManager)
+            resource_manager = scope.resolve(ResourceManager)  # type: ignore[type-abstract]
             progress_reporter = LoggingProgressReporter(
                 workflow.name, logging.getLogger(f"debcraft.workflow.{workflow.name}")
             )

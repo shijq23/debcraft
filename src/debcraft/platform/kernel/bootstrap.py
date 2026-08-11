@@ -46,7 +46,7 @@ def bootstrap() -> Container:
     # Register the container itself so services that depend on Container
     # (e.g., KernelWorkflowEngine, KernelWorkflowFactory) can be resolved
     # via constructor injection.
-    container.register_instance(Container, container)
+    container.register_instance(Container, container)  # type: ignore[type-abstract]
 
     container.register_singleton(ConfigurationService, KernelConfigurationService)  # type: ignore[type-abstract]
     container.register_singleton(EventBus, KernelEventBus)  # type: ignore[type-abstract]

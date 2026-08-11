@@ -71,8 +71,8 @@ class MirrorWorkflow(Workflow):
         # Resolve dependencies from DI scope
         config_reader = context.scope.resolve(ConfigReader)
         download_coordinator = context.scope.resolve(DownloadCoordinator)
-        db_provider = context.scope.resolve(DatabaseProvider)
-        storage_engine = context.scope.resolve(StorageEngine)
+        db_provider = context.scope.resolve(DatabaseProvider)  # type: ignore[type-abstract]
+        storage_engine = context.scope.resolve(StorageEngine)  # type: ignore[type-abstract]
 
         # Read configuration
         config = config_reader.read()
