@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import UniqueConstraint
 
 from debcraft.infrastructure.models.cache import (
+    CachedEnrichment,
     ChecksumCache,
     NormalizedLicense,
     ParsedDep5,
@@ -235,6 +236,43 @@ class TestColumnDefinitions:
         columns = {col.name for col in ChecksumCache.__table__.columns}
         expected = {"id", "content_sha256", "computed_hash", "valid", "created_at", "updated_at"}
         assert expected.issubset(columns)
+
+    def test_cached_enrichment_has_required_columns(self) -> None:
+        columns = {col.name for col in CachedEnrichment.__table__.columns}
+        expected = {
+            "id",
+            "package_name",
+            "version",
+            "architecture",
+            "snapshot_id",
+            "source_package",
+            "maintainer",
+            "homepage",
+            "depends",
+            "section",
+            "priority",
+            "description",
+            "sha256",
+            "download_url",
+            "purl",
+            "license_expressions_json",
+            "local_deb_path",
+            "created_at",
+            "updated_at",
+        }
+        assert expected.issubset(columns)
+
+    def test_cached_enrichment_has_unique_constraint(self) -> None:
+        constraints = [c for c in CachedEnrichment.__table__.constraints if isinstance(c, UniqueConstraint)]
+        assert len(constraints) == 1
+        col_names = {col.name for col in constraints[0].columns}
+        assert col_names == {"package_name", "version", "architecture", "snapshot_id"}
+
+    def test_cached_enrichment_has_pkg_ver_index(self) -> None:
+        from sqlalchemy import Index as SaIndex
+
+        index_names = [arg.name for arg in CachedEnrichment.__table_args__ if isinstance(arg, SaIndex)]
+        assert "ix_cached_enrichment_pkg_ver" in index_names
 
     def test_repository_file_id_is_primary_key(self) -> None:
         id_col = RepositoryFile.__table__.columns["id"]

@@ -1,6 +1,6 @@
-.PHONY: all clean packages repos
+.PHONY: all clean packages repos iso
 
-all: packages repos
+all: packages repos iso
 
 packages:
 	./create-package.sh --build -v 1.0-1 -o packages/ hello
@@ -16,3 +16,9 @@ clean:
 	rm -rf packages/*/
 	find repositories/ -type f ! -name '.gitkeep' -delete
 	rm -rf repositories/*/
+	rm -f images/test.iso
+
+iso: images/test.iso
+
+images/test.iso:
+	./build-iso.sh

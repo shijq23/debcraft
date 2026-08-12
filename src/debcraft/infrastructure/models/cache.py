@@ -58,3 +58,42 @@ class ParsedDebPackage(Base, TimestampMixin):
     dependencies: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
     copyright_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_listing: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+
+
+class CachedEnrichment(Base, TimestampMixin):
+    """Cached package enrichment metadata keyed by package identity and snapshot.
+
+    Stores enrichment data (license, PURL, download URL, etc.) so that
+    repeated scans of the same packages avoid re-querying repositories.
+    Entries are invalidated when a new RepositorySnapshot is published.
+    """
+
+    __tablename__ = "cached_enrichments"
+    __table_args__ = (
+        UniqueConstraint(
+            "package_name",
+            "version",
+            "architecture",
+            "snapshot_id",
+            name="uq_cached_enrichment_pkg_ver_arch_snap",
+        ),
+        Index("ix_cached_enrichment_pkg_ver", "package_name", "version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    package_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    version: Mapped[str] = mapped_column(String(256), nullable=False)
+    architecture: Mapped[str] = mapped_column(String(64), nullable=False)
+    snapshot_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_package: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    maintainer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    homepage: Mapped[str | None] = mapped_column(Text, nullable=True)
+    depends: Mapped[str | None] = mapped_column(Text, nullable=True)
+    section: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    priority: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    download_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purl: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_expressions_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    local_deb_path: Mapped[str | None] = mapped_column(Text, nullable=True)

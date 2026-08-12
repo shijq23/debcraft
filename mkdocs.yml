@@ -37,6 +37,7 @@ nav:
   - Developer Guide:
       - developer/index.md
       - Getting Started: developer/getting-started.md
+      - ISO Scanner: developer/iso-scanner.md
   - User Guide:
       - user/index.md
 

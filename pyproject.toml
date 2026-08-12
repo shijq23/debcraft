@@ -18,6 +18,15 @@ dependencies = [
 [project.scripts]
 debcraft = "debcraft.cli:app"
 
+[project.entry-points."debcraft.scanners"]
+directory = "debcraft.infrastructure.scanners.directory:DirectoryScanner"
+docker = "debcraft.infrastructure.scanners.docker:DockerScanner"
+oci = "debcraft.infrastructure.scanners.oci:OCIScanner"
+iso = "debcraft.infrastructure.scanners.iso:ISOScanner"
+qcow2 = "debcraft.infrastructure.scanners.qcow2:QCOW2Scanner"
+img = "debcraft.infrastructure.scanners.img:IMGScanner"
+ami = "debcraft.infrastructure.scanners.ami:AMIScanner"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
