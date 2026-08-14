@@ -29,6 +29,7 @@ lint:
     uv run basedpyright
     uv run mypy
     uv run lint-imports
+    uv run pylint src/
 
 # Clean build artifacts and caches
 clean:

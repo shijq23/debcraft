@@ -25,6 +25,10 @@ from debcraft.cli.index import index_app  # noqa: E402
 
 app.add_typer(index_app, name="index")
 
+from debcraft.cli.sbom import sbom as sbom_command  # noqa: E402
+
+app.command()(sbom_command)
+
 
 @dataclass
 class DoctorCheck:

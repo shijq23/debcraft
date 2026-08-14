@@ -113,7 +113,7 @@ sequenceDiagram
     Client->>Registry: get_scanner(artifact_type)
     Registry-->>Client: scanner instance
     Client->>Scanner: scan(artifact, context)
-    
+
     alt dpkg status found
         Scanner->>Parser: parse(status_content)
         Parser-->>Scanner: list[IdentifiedPackage]
@@ -123,7 +123,7 @@ sequenceDiagram
     end
 
     Scanner->>Enricher: enrich(packages, context)
-    
+
     loop For each package
         Enricher->>Cache: get(name, version, arch, snapshot_id)
         alt cache hit
@@ -1285,9 +1285,9 @@ erDiagram
     RepositorySnapshot ||--o{ PackageInstance : contains
     RepositorySnapshot ||--o{ FileOwnership : contains
     PackageInstance ||--o{ LicenseExpression : has
-    
+
     CachedEnrichment }o--|| RepositorySnapshot : "references snapshot_id"
-    
+
     ScanResult ||--o{ EnrichedPackage : contains
     EnrichedPackage ||--|| IdentifiedPackage : wraps
     EnrichedPackage ||--o| PackageEnrichment : "optional enrichment"

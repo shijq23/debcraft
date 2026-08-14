@@ -38,8 +38,21 @@ nav:
       - developer/index.md
       - Getting Started: developer/getting-started.md
       - ISO Scanner: developer/iso-scanner.md
+      - Docker Scanner: developer/docker-scanner.md
+      - Disk Image Scanner: developer/disk-image-scanner.md
+      - Writing a Scanner: developer/writing-a-scanner.md
   - User Guide:
       - user/index.md
+      - ISO Scanning: user/iso.md
+      - Docker Scanning: user/docker.md
+      - IMG Scanning: user/img.md
+      - QCOW2 Scanning: user/qcow2.md
+      - Troubleshooting: user/troubleshooting.md
+  - API Reference:
+      - api/index.md
+      - Platform Contracts: api/contracts.md
+      - Scanner Ports: api/scanner-ports.md
+      - Scanner Values: api/scanner-values.md
 
 markdown_extensions:
   - admonition

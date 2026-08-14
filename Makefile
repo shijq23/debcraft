@@ -20,6 +20,7 @@ lint:
 	uv run basedpyright
 	uv run mypy
 	uv run lint-imports
+	uv run pylint src/
 
 clean:
 	rm -rf dist/
