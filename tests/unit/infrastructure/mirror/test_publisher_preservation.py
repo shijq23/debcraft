@@ -20,7 +20,7 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -71,7 +71,6 @@ class TestPublisherPreservationVersionRetrieval:
     **Validates: Requirements 3.1**
     """
 
-    @settings(max_examples=50)
     @given(
         versions=st.lists(
             st.integers(min_value=1, max_value=10000),
@@ -136,7 +135,6 @@ class TestPublisherPreservationErrorPropagation:
     **Validates: Requirements 3.4**
     """
 
-    @settings(max_examples=30)
     @given(
         error_message=st.sampled_from(
             [

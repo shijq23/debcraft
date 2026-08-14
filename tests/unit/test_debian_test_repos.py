@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.release_parser import ReleaseParser
@@ -259,7 +259,6 @@ class TestProperty2ControlFileReflectsArguments:
     the debian/changelog SHALL contain the version.
     """
 
-    @settings(max_examples=100)
     @given(
         name=package_names,
         arch=architectures,
@@ -272,7 +271,6 @@ class TestProperty2ControlFileReflectsArguments:
         control = generate_control_content(name=name, arch=arch, depends=deps, description=desc)
         assert f"Package: {name}" in control
 
-    @settings(max_examples=100)
     @given(
         name=package_names,
         arch=architectures,
@@ -285,7 +283,6 @@ class TestProperty2ControlFileReflectsArguments:
         control = generate_control_content(name=name, arch=arch, depends=deps, description=desc)
         assert f"Architecture: {arch}" in control
 
-    @settings(max_examples=100)
     @given(
         name=package_names,
         arch=architectures,
@@ -305,7 +302,6 @@ class TestProperty2ControlFileReflectsArguments:
             lines = control.splitlines()
             assert not any(line.startswith("Depends:") for line in lines)
 
-    @settings(max_examples=100)
     @given(
         name=package_names,
         arch=architectures,
@@ -318,7 +314,6 @@ class TestProperty2ControlFileReflectsArguments:
         control = generate_control_content(name=name, arch=arch, depends=deps, description=desc)
         assert f"Description: {desc}" in control
 
-    @settings(max_examples=100)
     @given(
         name=package_names,
         arch=architectures,
@@ -348,7 +343,6 @@ class TestProperty3RepositoryDirectoryStructure:
     dists/{suite}/main/binary-{arch}/ for each specified architecture.
     """
 
-    @settings(max_examples=100)
     @given(
         repo_name=package_names,
         suite=suites,
@@ -363,7 +357,6 @@ class TestProperty3RepositoryDirectoryStructure:
             f"expected a path containing 'pool/main' but got {paths}"
         )
 
-    @settings(max_examples=100)
     @given(
         repo_name=package_names,
         suite=suites,
@@ -391,7 +384,6 @@ class TestProperty1PackageSkeletonCompleteness:
     files for debian/control, debian/changelog, debian/rules, and debian/compat.
     """
 
-    @settings(max_examples=100)
     @given(name=package_names)
     def test_skeleton_contains_all_required_files(self, name: str) -> None:
         """Skeleton always contains debian/control, changelog, rules, and compat."""
@@ -439,7 +431,7 @@ class TestUnitDefaultsAndValidation:
         """create-package.sh exists at the expected fixture path."""
         import pathlib
 
-        script = pathlib.Path(__file__).parent.parent / "fixtures" / "create-package.sh"
+        script = pathlib.Path(__file__).parent.parent.parent / "fixtures" / "create-package.sh"
         assert script.exists()
         if sys.platform == "win32":
             pytest.skip("Unix executable permissions not available on Windows")
@@ -449,7 +441,7 @@ class TestUnitDefaultsAndValidation:
         """create-repo.sh exists at the expected fixture path."""
         import pathlib
 
-        script = pathlib.Path(__file__).parent.parent / "fixtures" / "create-repo.sh"
+        script = pathlib.Path(__file__).parent.parent.parent / "fixtures" / "create-repo.sh"
         assert script.exists()
         if sys.platform == "win32":
             pytest.skip("Unix executable permissions not available on Windows")
@@ -461,7 +453,7 @@ class TestUnitDefaultsAndValidation:
         import pathlib
         import subprocess
 
-        script = pathlib.Path(__file__).parent.parent / "fixtures" / "create-package.sh"
+        script = pathlib.Path(__file__).parent.parent.parent / "fixtures" / "create-package.sh"
         # Names that fail regex ^[a-z0-9][a-z0-9.+\-]+$:
         # - uppercase letters not allowed
         # - starting with hyphen not allowed
@@ -489,7 +481,6 @@ class TestProperty4PoolNamingConvention:
     and the first character otherwise.
     """
 
-    @settings(max_examples=100)
     @given(name=package_names)
     def test_regular_packages_use_first_character_prefix(self, name):
         """Regular packages (not starting with 'lib') use first character as prefix."""
@@ -499,14 +490,12 @@ class TestProperty4PoolNamingConvention:
         prefix = compute_pool_prefix(name)
         assert prefix == name[0], f"Expected prefix '{name[0]}' for package '{name}', got '{prefix}'"
 
-    @settings(max_examples=100)
     @given(name=lib_package_names)
     def test_lib_packages_use_first_four_character_prefix(self, name):
         """Library packages (starting with 'lib') use first four characters as prefix."""
         prefix = compute_pool_prefix(name)
         assert prefix == name[:4], f"Expected prefix '{name[:4]}' for package '{name}', got '{prefix}'"
 
-    @settings(max_examples=100)
     @given(name=package_names, version=versions, arch=architectures)
     def test_pool_path_contains_correct_prefix(self, name, version, arch):
         """Pool path contains the correct prefix directory for any package."""

@@ -157,7 +157,7 @@ class TestDownloadRecoveryStateMachine:
     if retry_count >= 3, the state transitions to FAILED.
     """
 
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(
         retry_count=st.integers(min_value=0, max_value=5),
     )
@@ -242,7 +242,7 @@ class TestCacheIntegrityVerification:
     filesystem during initialization.
     """
 
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     @given(
         file_content=st.binary(min_size=1, max_size=100),
         mismatch=st.booleans(),
@@ -318,7 +318,7 @@ class TestCacheCorruptionMarking:
     an error to the caller.
     """
 
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     @given(
         file_content=st.binary(min_size=1, max_size=100),
     )
@@ -414,7 +414,7 @@ class TestCacheDbDeletionRecovery:
     or metadata.db.
     """
 
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     @given(
         url_suffix=st.text(
             alphabet=st.characters(whitelist_categories=("L", "N")),
@@ -510,7 +510,7 @@ class TestCacheMetadataConflictResolution:
     while metadata remains authoritative and unchanged.
     """
 
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     @given(
         cached_hash=st.text(
             alphabet="0123456789abcdef",

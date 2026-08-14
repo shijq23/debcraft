@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.database.provider import SqliteDatabaseProvider
@@ -32,7 +32,6 @@ class TestErrorWrappingStorageProvider:
     a StorageError is raised with the original exception as __cause__.
     """
 
-    @settings(max_examples=200)
     @given(
         exc_type=st.sampled_from([PermissionError, FileNotFoundError, OSError]),
     )
@@ -64,7 +63,6 @@ class TestErrorWrappingDatabaseProvider:
     with the original exception as __cause__.
     """
 
-    @settings(max_examples=200)
     @given(
         exc_type=st.sampled_from([PermissionError, FileNotFoundError, OSError]),
     )

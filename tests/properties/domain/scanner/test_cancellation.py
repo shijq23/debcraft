@@ -139,7 +139,7 @@ class TestProperty4CancellationProducesValidSubset:
     **Validates: Requirements 4.5, 13.1, 13.2, 13.3**
     """
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(data=st_cancellation_point())
     async def test_cancelled_result_is_prefix_of_full_result(self, data: tuple[int, int]) -> None:
         """Partial result from cancellation is a prefix of the full result.
@@ -196,7 +196,7 @@ class TestProperty4CancellationProducesValidSubset:
                     f"full={full_result.packages[i]}"
                 )
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(data=st_cancellation_point())
     async def test_cancelled_result_has_cancellation_diagnostic(self, data: tuple[int, int]) -> None:
         """A cancelled scan includes a diagnostic mentioning cancellation.
@@ -234,7 +234,7 @@ class TestProperty4CancellationProducesValidSubset:
                 f"got diagnostics: {cancelled_result.diagnostics}"
             )
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(num_packages=st.integers(min_value=1, max_value=50))
     async def test_no_cancellation_returns_all_packages(self, num_packages: int) -> None:
         """Without cancellation, the full scan returns all packages.

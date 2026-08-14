@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.storage.paths import resolve_xdg_path
@@ -41,7 +41,6 @@ class TestBugConditionFixValidation:
     - re.escape(str(Path(...))) for regex matching
     """
 
-    @settings(max_examples=50)
     @given(
         platform=st.sampled_from(list(_ALL_PLATFORMS)),
         purpose=st.sampled_from(list(_ALL_PURPOSES)),
@@ -73,7 +72,6 @@ class TestBugConditionFixValidation:
             f"PurePosixPath validation failed for {platform}/{purpose}: {result}"
         )
 
-    @settings(max_examples=50)
     @given(
         content=st.text(
             alphabet=st.characters(

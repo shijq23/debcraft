@@ -29,14 +29,22 @@ lint:
     uv run basedpyright
     uv run mypy
     uv run lint-imports
+    uv run pylint src/
+    uv run pre-commit run --all-files
 
 # Clean build artifacts and caches
 clean:
     rm -rf dist/
+    rm -rf site/
     find . -type d -name "__pycache__" -exec rm -rf {} +
     find . -type d -name "*.egg-info" -exec rm -rf {} +
     rm -rf .ruff_cache/
     rm -rf .pytest_cache/
     rm -rf .mypy_cache/
+    rm -rf .import_linter_cache/
     rm -rf .coverage
     rm -rf htmlcov/
+
+# Generate documents site
+docs:
+	uv run mkdocs build --strict

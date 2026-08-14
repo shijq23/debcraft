@@ -1,6 +1,6 @@
-.PHONY: all clean packages repos iso
+.PHONY: all clean packages repos images iso squashfs
 
-all: packages repos iso
+all: packages repos images
 
 packages:
 	./create-package.sh --build -v 1.0-1 -o packages/ hello
@@ -17,8 +17,16 @@ clean:
 	find repositories/ -type f ! -name '.gitkeep' -delete
 	rm -rf repositories/*/
 	rm -f images/test.iso
+	rm -f images/test.squashfs
+
+images: iso squashfs
 
 iso: images/test.iso
 
 images/test.iso:
 	./build-iso.sh
+
+squashfs: images/test.squashfs
+
+images/test.squashfs:
+	./build-squashfs.sh

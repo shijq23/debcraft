@@ -80,7 +80,6 @@ class TestPreservationSchemaCreation:
     """
 
     @settings(
-        max_examples=5,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -137,7 +136,6 @@ class TestPreservationEmptyFirstRun:
     """
 
     @settings(
-        max_examples=5,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -187,7 +185,6 @@ class TestPreservationComparatorEmptyChecksums:
     **Validates: Requirements 3.1**
     """
 
-    @settings(max_examples=100)
     @given(
         entries=st.lists(
             _file_entry_strategy(),
@@ -235,7 +232,6 @@ class TestPreservationComparatorMatchingChecksums:
     **Validates: Requirements 3.2**
     """
 
-    @settings(max_examples=100)
     @given(entry=_file_entry_strategy())
     def test_matching_checksum_produces_skip(
         self,
@@ -276,7 +272,6 @@ class TestPreservationComparatorDifferingChecksums:
     **Validates: Requirements 3.2**
     """
 
-    @settings(max_examples=100)
     @given(
         entry=_file_entry_strategy(),
         different_sha256=_sha256_strategy,

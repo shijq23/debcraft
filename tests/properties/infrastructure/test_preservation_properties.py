@@ -21,7 +21,7 @@ from pathlib import Path, PurePosixPath
 from typing import get_args
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.storage.paths import resolve_xdg_path
@@ -91,7 +91,6 @@ class TestPreservationProperties:
     after the fix is applied.
     """
 
-    @settings(max_examples=200)
     @given(
         platform=st.sampled_from(["linux", "darwin", "win32"]),
         purpose=st.sampled_from(_ALL_PURPOSES),
@@ -116,7 +115,6 @@ class TestPreservationProperties:
             f"PurePosixPath('{result}').is_absolute() returned False for platform={platform}, purpose={purpose}"
         )
 
-    @settings(max_examples=200)
     @given(
         platform=st.sampled_from(["linux", "darwin", "win32"]),
         purpose=st.sampled_from(_ALL_PURPOSES),

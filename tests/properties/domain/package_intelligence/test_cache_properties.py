@@ -13,7 +13,7 @@ import hashlib
 from typing import TYPE_CHECKING
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.deb_parser import DebParser
@@ -48,6 +48,9 @@ def deb_parse_result_strategy(draw: st.DrawFn) -> DebParseResult:
     architecture = draw(st.sampled_from(_ARCH_CHOICES))
 
     # Generate control fields
+    # Avoid generating field names that match dependency fields (Depends, Pre-Depends,
+    # Recommends, Suggests) since those require valid dependency syntax when re-parsed.
+    _dependency_field_names = {"depends", "pre-depends", "recommends", "suggests"}
     num_extra_fields = draw(st.integers(min_value=0, max_value=3))
     control_fields: dict[str, str] = {
         "Package": package_name,
@@ -56,7 +59,9 @@ def deb_parse_result_strategy(draw: st.DrawFn) -> DebParseResult:
     }
     for _ in range(num_extra_fields):
         field_name = draw(
-            st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-", min_size=1, max_size=15)
+            st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-", min_size=1, max_size=15).filter(
+                lambda name: name.lower() not in _dependency_field_names
+            )
         )
         field_value = draw(st.text(alphabet=_PRINTABLE_ASCII, min_size=1, max_size=30))
         control_fields[field_name] = field_value
@@ -293,7 +298,6 @@ class TestProperty20CacheStoreOnSuccessSkipOnFailure:
     **Validates: Requirements 11.1, 11.5**
     """
 
-    @settings(max_examples=100)
     @given(
         parse_result=deb_parse_result_strategy(),
         sha256=sha256_hex_strategy(),
@@ -322,7 +326,6 @@ class TestProperty20CacheStoreOnSuccessSkipOnFailure:
             f"Expected parser version {DebParser.PARSER_VERSION}, got {stored_version}"
         )
 
-    @settings(max_examples=100)
     @given(sha256=sha256_hex_strategy())
     def test_store_not_called_on_failed_parse(self, sha256: str) -> None:
         """Cache store is NOT called when parsing fails."""
@@ -362,7 +365,6 @@ class TestProperty21CacheHitReturnsCachedResultWithoutReExtraction:
     **Validates: Requirements 11.2**
     """
 
-    @settings(max_examples=100)
     @given(
         parse_result=deb_parse_result_strategy(),
         sha256=sha256_hex_strategy(),
@@ -387,7 +389,6 @@ class TestProperty21CacheHitReturnsCachedResultWithoutReExtraction:
         # Verify the cached result was returned
         assert result is parse_result, "Expected the exact cached result object to be returned"
 
-    @settings(max_examples=100)
     @given(
         parse_result=deb_parse_result_strategy(),
         sha256=sha256_hex_strategy(),
@@ -432,7 +433,6 @@ class TestProperty22CacheInvalidationOnVersionChange:
     **Validates: Requirements 11.3**
     """
 
-    @settings(max_examples=100)
     @given(
         parse_result=deb_parse_result_strategy(),
         sha256=sha256_hex_strategy(),
@@ -463,7 +463,6 @@ class TestProperty22CacheInvalidationOnVersionChange:
             f"Old version: {old_version}, current: {DebParser.PARSER_VERSION}"
         )
 
-    @settings(max_examples=100)
     @given(
         parse_result=deb_parse_result_strategy(),
         sha256=sha256_hex_strategy(),

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.download_location import (
@@ -114,7 +114,6 @@ class TestProperty11DownloadLocationURLJoin:
     **Validates: Requirements 9.1, 9.2, 9.3, 9.5**
     """
 
-    @settings(max_examples=100)
     @given(base_url=non_empty_urls(), filename=non_empty_filenames())
     def test_download_location_no_double_slash(self, base_url: str, filename: str) -> None:
         """Result has no double-slash after the protocol prefix."""
@@ -186,7 +185,6 @@ class TestProperty12DownloadLocationNOASSERTIONForMissing:
     **Validates: Requirements 9.4**
     """
 
-    @settings(max_examples=100)
     @given(base_url=_missing_value, filename=_present_filename)
     def test_noassertion_when_base_url_missing(self, base_url: str | None, filename: str) -> None:
         """Returns NOASSERTION when base_url is None, empty, or whitespace."""
@@ -195,7 +193,6 @@ class TestProperty12DownloadLocationNOASSERTIONForMissing:
             f"Expected NOASSERTION for missing base_url={base_url!r}, filename={filename!r}, got {result!r}"
         )
 
-    @settings(max_examples=100)
     @given(base_url=_present_value, filename=_missing_value)
     def test_noassertion_when_filename_missing(self, base_url: str, filename: str | None) -> None:
         """Returns NOASSERTION when filename is None, empty, or whitespace."""
@@ -204,7 +201,6 @@ class TestProperty12DownloadLocationNOASSERTIONForMissing:
             f"Expected NOASSERTION for base_url={base_url!r}, missing filename={filename!r}, got {result!r}"
         )
 
-    @settings(max_examples=100)
     @given(base_url=_missing_value, filename=_missing_value)
     def test_noassertion_when_both_missing(self, base_url: str | None, filename: str | None) -> None:
         """Returns NOASSERTION when both inputs are missing."""

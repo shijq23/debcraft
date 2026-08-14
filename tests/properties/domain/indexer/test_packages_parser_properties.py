@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.indexer.packages_parser import PackagesParser
@@ -179,7 +179,6 @@ class TestProperty1PackageMetadataRoundTrip:
     **Validates: Requirements 1.1, 1.6**
     """
 
-    @settings(max_examples=200)
     @given(metadata=_valid_package_metadata())
     def test_format_then_parse_produces_equivalent_metadata(self, metadata: PackageMetadata) -> None:
         """format(metadata) -> parse(stanza) produces an equivalent object."""
@@ -261,7 +260,6 @@ class TestProperty2SourceFieldInferenceRules:
     **Validates: Requirements 1.3, 1.4, 1.5**
     """
 
-    @settings(max_examples=200)
     @given(
         source_name=_source_package_name(),
         source_ver=_source_version(),
@@ -290,7 +288,6 @@ class TestProperty2SourceFieldInferenceRules:
         assert metadata.source_package == source_name
         assert metadata.source_version == source_ver
 
-    @settings(max_examples=200)
     @given(
         source_name=_source_package_name(),
         package_name=_debian_package_name(),
@@ -317,7 +314,6 @@ class TestProperty2SourceFieldInferenceRules:
         assert metadata.source_package == source_name
         assert metadata.source_version == binary_version
 
-    @settings(max_examples=200)
     @given(
         package_name=_debian_package_name(),
         binary_version=_debian_version(),
@@ -436,7 +432,6 @@ class TestProperty3InvalidStanzasSkipped:
     **Validates: Requirements 1.2**
     """
 
-    @settings(max_examples=100)
     @given(stanza=_stanza_missing_required_fields())
     def test_missing_required_field_produces_empty_result(self, stanza: str) -> None:
         """Stanzas missing required fields produce no output."""
@@ -446,7 +441,6 @@ class TestProperty3InvalidStanzasSkipped:
             f"Expected empty list for stanza missing required fields, got {len(result)} result(s).\nStanza:\n{stanza}"
         )
 
-    @settings(max_examples=100)
     @given(stanza=_stanza_missing_required_fields())
     def test_missing_required_field_does_not_raise(self, stanza: str) -> None:
         """Stanzas missing required fields do not raise exceptions."""

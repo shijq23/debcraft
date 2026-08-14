@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.indexer.errors import ReleaseParseError
@@ -66,7 +66,6 @@ class TestProperty9ReleaseMetadataExtractionWithSuiteFallback:
     **Validates: Requirements 4.1, 4.2**
     """
 
-    @settings(max_examples=100)
     @given(
         scenario=st.sampled_from(["both", "suite_only", "codename_only"]),
         suite_value=_release_field_value(),
@@ -111,7 +110,6 @@ class TestProperty9ReleaseMetadataExtractionWithSuiteFallback:
                 f"With only Codename, suite should fall back to Codename value '{codename_value}', got '{result.suite}'"
             )
 
-    @settings(max_examples=100)
     @given(
         suite_value=_release_field_value(),
         codename_value=_release_field_value(),
@@ -129,7 +127,6 @@ class TestProperty9ReleaseMetadataExtractionWithSuiteFallback:
         assert result.suite == suite_value
         assert result.codename == codename_value
 
-    @settings(max_examples=100)
     @given(suite_value=_release_field_value())
     def test_suite_only_no_codename(self, suite_value: str) -> None:
         """When only Suite is present, suite equals Suite value and codename is None."""
@@ -140,7 +137,6 @@ class TestProperty9ReleaseMetadataExtractionWithSuiteFallback:
         assert result.suite == suite_value
         assert result.codename is None
 
-    @settings(max_examples=100)
     @given(codename_value=_release_field_value())
     def test_codename_only_falls_back(self, codename_value: str) -> None:
         """When only Codename is present, suite falls back to Codename value."""

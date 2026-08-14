@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.indexer.service import (
@@ -82,7 +82,6 @@ class TestProperty10IncrementalIndexingDecision:
     **Validates: Requirements 5.1, 5.2, 5.3**
     """
 
-    @settings(max_examples=100)
     @given(
         current_sha256=_sha256_strategy,
         current_parser_version=_parser_version_strategy,
@@ -99,7 +98,6 @@ class TestProperty10IncrementalIndexingDecision:
 
         assert result is False, "File with no indexing record should never be skipped"
 
-    @settings(max_examples=100)
     @given(
         sha256=_sha256_strategy,
         parser_version=_parser_version_strategy,
@@ -122,7 +120,6 @@ class TestProperty10IncrementalIndexingDecision:
             f"File with matching SHA256 ({sha256[:8]}...) and parser_version ({parser_version}) should be skipped"
         )
 
-    @settings(max_examples=100)
     @given(
         recorded_sha256=_sha256_strategy,
         current_sha256=_sha256_strategy,
@@ -152,7 +149,6 @@ class TestProperty10IncrementalIndexingDecision:
             f"current={current_sha256[:8]}...) should NOT be skipped"
         )
 
-    @settings(max_examples=100)
     @given(
         sha256=_sha256_strategy,
         recorded_version=_parser_version_strategy,
@@ -182,7 +178,6 @@ class TestProperty10IncrementalIndexingDecision:
             f"current={current_version}) should NOT be skipped"
         )
 
-    @settings(max_examples=100)
     @given(
         recorded_sha256=_sha256_strategy,
         current_sha256=_sha256_strategy,
@@ -212,7 +207,6 @@ class TestProperty10IncrementalIndexingDecision:
 
         assert result is False, "File with both SHA256 and parser_version different should NOT be skipped"
 
-    @settings(max_examples=100)
     @given(
         recorded_sha256=_sha256_strategy,
         current_sha256=_sha256_strategy,
@@ -321,7 +315,6 @@ class TestProperty11DeterministicProcessingOrder:
     **Validates: Requirements 5.4**
     """
 
-    @settings(max_examples=100)
     @given(files=_file_info_list())
     def test_sort_order_is_deterministic_regardless_of_input_order(self, files: list[FakeFileInfo]) -> None:
         """Two different shuffles of the same file set produce the same sorted order."""
@@ -347,7 +340,6 @@ class TestProperty11DeterministicProcessingOrder:
             f"Permutation 2 sorted: {[f.url for f in sorted2]}"
         )
 
-    @settings(max_examples=100)
     @given(files=_file_info_list())
     def test_sort_groups_by_file_type(self, files: list[FakeFileInfo]) -> None:
         """Files are grouped by inferred file type in the sorted output."""
@@ -508,7 +500,6 @@ class TestProperty12DuplicateNaturalKeySkipping:
     **Validates: Requirements 6.2**
     """
 
-    @settings(max_examples=100)
     @given(packages=_package_list_with_duplicates())
     def test_deduplication_produces_unique_natural_keys(self, packages: list[PackageMetadata]) -> None:
         """Only unique natural keys survive deduplication."""
@@ -533,7 +524,6 @@ class TestProperty12DuplicateNaturalKeySkipping:
             f"Unique keys: {unique_keys}"
         )
 
-    @settings(max_examples=100)
     @given(packages=_package_list_with_duplicates())
     def test_deduplicated_keys_are_subset_of_input_keys(self, packages: list[PackageMetadata]) -> None:
         """Every key in the deduplicated result is present in the input."""
@@ -557,7 +547,6 @@ class TestProperty12DuplicateNaturalKeySkipping:
             f"Extra: {result_keys - all_keys}"
         )
 
-    @settings(max_examples=100)
     @given(packages=_package_list_with_duplicates())
     def test_input_with_duplicates_has_fewer_unique_keys(self, packages: list[PackageMetadata]) -> None:
         """The list always contains duplicates, so unique count < total count."""
@@ -640,7 +629,6 @@ class TestProperty13DownloadUrlComputation:
     **Validates: Requirements 6.4**
     """
 
-    @settings(max_examples=100)
     @given(base_url=_base_url_strategy(), filename=_filename_strategy())
     def test_download_url_equals_expected_computation(self, base_url: str, filename: str) -> None:
         """Computed download URL matches base_url.rstrip('/') + '/' + filename.lstrip('/')."""
@@ -655,7 +643,6 @@ class TestProperty13DownloadUrlComputation:
             f"expected: {expected!r}"
         )
 
-    @settings(max_examples=100)
     @given(base_url=_base_url_strategy(), filename=_filename_strategy())
     def test_no_double_slashes_between_base_and_filename(self, base_url: str, filename: str) -> None:
         """No double slashes exist at the join point between base URL and filename."""

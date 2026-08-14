@@ -82,12 +82,12 @@ def derive_file_path(mirror_root: Path, relative_path: str) -> Path:
         Absolute path where the file should be stored locally.
 
     Examples:
-        >>> root = Path("/home/user/.cache/debcraft/mirror/mirror.elxr.dev/elxr")
+        >>> root = Path("/cache/mirror/mirror.elxr.dev/elxr")
         >>> derive_file_path(root, "dists/elxr3/InRelease")
-        PosixPath('/home/user/.cache/debcraft/mirror/mirror.elxr.dev/elxr/dists/elxr3/InRelease')
+        PosixPath('/cache/mirror/mirror.elxr.dev/elxr/dists/elxr3/InRelease')
 
         >>> derive_file_path(root, "pool/main/l/libssl3/libssl3_3.0.2-0ubuntu1_amd64.deb")
-        PosixPath('/home/user/.cache/debcraft/mirror/mirror.elxr.dev/elxr/pool/main/l/libssl3/libssl3_3.0.2-0ubuntu1_amd64.deb')
+        PosixPath('/cache/mirror/mirror.elxr.dev/elxr/pool/main/l/libssl3/libssl3_3.0.2-0ubuntu1_amd64.deb')
     """
     # Strip leading slash/separator to prevent path joining issues
     clean_relative = relative_path.lstrip("/")

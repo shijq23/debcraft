@@ -49,8 +49,8 @@ from debcraft.infrastructure.models.base import Base
 # File content for download tests (limit size for speed)
 _content_strategy = st.binary(min_size=1, max_size=2048)
 
-# HTTP 4xx status codes
-_http_4xx_strategy = st.integers(min_value=400, max_value=499)
+# HTTP 4xx status codes (excluding 429 which is HttpRateLimitError)
+_http_4xx_strategy = st.integers(min_value=400, max_value=499).filter(lambda x: x != 429)
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +247,6 @@ class TestDownloadSuccessPreservation:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -313,7 +312,6 @@ class TestFourXXImmediateFailPreservation:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -381,7 +379,6 @@ class TestRetryThenSuccessPreservation:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )

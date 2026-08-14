@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from debcraft.domain._stanza_parser import parse_stanza_fields, split_stanzas
 from debcraft.domain.indexer.values import SourcePackageMetadata
 
 logger = logging.getLogger(__name__)
@@ -35,14 +36,9 @@ class SourcesParser:
             return []
 
         results: list[SourcePackageMetadata] = []
-        stanzas = content.split("\n\n")
 
-        for stanza in stanzas:
-            stanza = stanza.strip()
-            if not stanza:
-                continue
-
-            fields = self._parse_stanza_fields(stanza)
+        for stanza in split_stanzas(content):
+            fields = parse_stanza_fields(stanza, preserve_continuations=True)
             metadata = self._build_metadata(fields)
             if metadata is not None:
                 results.append(metadata)
@@ -83,37 +79,6 @@ class SourcesParser:
             lines.append(f"Binary: {', '.join(metadata.binary_packages)}")
 
         return "\n".join(lines)
-
-    def _parse_stanza_fields(self, stanza: str) -> dict[str, str]:
-        """Parse a single stanza into a field name -> value mapping.
-
-        Handles continuation lines (lines starting with whitespace) by
-        appending them to the previous field's value.
-
-        Args:
-            stanza: A single stanza block (no blank lines).
-
-        Returns:
-            Dictionary mapping field names (case-preserved) to their values.
-        """
-        fields: dict[str, str] = {}
-        current_key: str | None = None
-
-        for line in stanza.split("\n"):
-            if not line:
-                continue
-
-            if line[0] in (" ", "\t"):
-                # Continuation line
-                if current_key is not None:
-                    fields[current_key] += "\n" + line
-            elif ":" in line:
-                key, _, value = line.partition(":")
-                current_key = key.strip()
-                fields[current_key] = value.strip()
-            # Lines without a colon and not continuation are ignored
-
-        return fields
 
     def _build_metadata(self, fields: dict[str, str]) -> SourcePackageMetadata | None:
         """Build a SourcePackageMetadata from parsed fields.

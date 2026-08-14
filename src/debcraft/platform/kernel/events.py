@@ -82,7 +82,7 @@ class KernelEventBus(EventBus):
                     await handler(event)
                 else:
                     handler(event)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught  # Event bus dispatch: must not crash other handlers
                 logger.exception(
                     "Handler %r failed while processing event %s",
                     handler,

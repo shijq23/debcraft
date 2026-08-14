@@ -402,7 +402,7 @@ class DebParser:
 
         try:
             data_tar_bytes = self._file_reader.read_ar_member(deb_path, "data.tar")
-        except Exception:
+        except (OSError, ValueError):
             # data.tar already validated in _extract_file_listing
             return None
 

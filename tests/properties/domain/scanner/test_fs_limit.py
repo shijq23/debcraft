@@ -13,7 +13,7 @@ Property 10: Filesystem Analyzer Path Limit
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.filesystem_analyzer import analyze_filesystem
@@ -85,7 +85,6 @@ class TestProperty10FilesystemAnalyzerPathLimit:
     by truncating input paths and reporting diagnostics about skipped paths.
     """
 
-    @settings(max_examples=100)
     @given(data=st.data())
     @pytest.mark.asyncio
     async def test_exceeding_max_paths_sends_exactly_max_paths(self, data: st.DataObject) -> None:
@@ -116,7 +115,6 @@ class TestProperty10FilesystemAnalyzerPathLimit:
             f"Expected {max_paths} paths sent to ContentsIndexPort, got {len(contents_port.received_paths)}"
         )
 
-    @settings(max_examples=100)
     @given(data=st.data())
     @pytest.mark.asyncio
     async def test_exceeding_max_paths_diagnostic_mentions_skipped_count(self, data: st.DataObject) -> None:
@@ -148,7 +146,6 @@ class TestProperty10FilesystemAnalyzerPathLimit:
             f"Expected diagnostic mentioning {skipped_count} skipped paths, got diagnostics: {result.diagnostics}"
         )
 
-    @settings(max_examples=100)
     @given(data=st.data())
     @pytest.mark.asyncio
     async def test_within_limit_all_paths_processed_no_truncation_diagnostic(self, data: st.DataObject) -> None:

@@ -53,11 +53,11 @@ class KernelResourceManager(ResourceManager):
         Returns:
             The value produced by entering the async context manager.
         """
-        value = await resource.__aenter__()
+        value = await resource.__aenter__()  # pylint: disable=unnecessary-dunder-call  # Resource tracker must enter without with-block
         resource_name = type(resource).__qualname__
 
         async def _cleanup() -> None:
-            await resource.__aexit__(None, None, None)
+            await resource.__aexit__(None, None, None)  # pylint: disable=unnecessary-dunder-call  # Explicit lifecycle cleanup
 
         self._cleanups.append((resource_name, _cleanup))
         return value
@@ -75,11 +75,11 @@ class KernelResourceManager(ResourceManager):
         Returns:
             The value produced by entering the context manager.
         """
-        value = resource.__enter__()
+        value = resource.__enter__()  # pylint: disable=unnecessary-dunder-call  # Resource tracker must enter without with-block
         resource_name = type(resource).__qualname__
 
         async def _cleanup() -> None:
-            resource.__exit__(None, None, None)
+            resource.__exit__(None, None, None)  # pylint: disable=unnecessary-dunder-call  # Explicit lifecycle cleanup
 
         self._cleanups.append((resource_name, _cleanup))
         return value
@@ -98,7 +98,7 @@ class KernelResourceManager(ResourceManager):
         for resource_name, callback in cleanups:
             try:
                 await callback()
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught  # Resource cleanup: must not crash other resource cleanups
                 _logger.exception(
                     "Failed to clean up resource '%s'",
                     resource_name,

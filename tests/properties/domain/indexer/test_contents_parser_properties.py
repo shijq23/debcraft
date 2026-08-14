@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.indexer.contents_parser import ContentsParser
@@ -123,7 +123,6 @@ class TestProperty7ContentsParsingCorrectness:
     **Validates: Requirements 3.1, 3.2**
     """
 
-    @settings(max_examples=100)
     @given(data=_contents_line_data())
     def test_single_line_produces_one_ownership_per_package(self, data: tuple[str, list[str]]) -> None:
         """Each package in a Contents line produces one FileOwnership."""
@@ -137,7 +136,6 @@ class TestProperty7ContentsParsingCorrectness:
             f"Expected {len(packages)} FileOwnership records, got {len(results)}.\nLine: {line!r}"
         )
 
-    @settings(max_examples=100)
     @given(data=_contents_line_data())
     def test_each_ownership_has_correct_path(self, data: tuple[str, list[str]]) -> None:
         """Each FileOwnership has the correct filesystem path."""
@@ -150,7 +148,6 @@ class TestProperty7ContentsParsingCorrectness:
         for ownership in results:
             assert ownership.path == path, f"Expected path={path!r}, got {ownership.path!r}.\nLine: {line!r}"
 
-    @settings(max_examples=100)
     @given(data=_contents_line_data())
     def test_each_ownership_has_correct_qualified_name(self, data: tuple[str, list[str]]) -> None:
         """Each FileOwnership has the correct qualified package name."""
@@ -163,7 +160,6 @@ class TestProperty7ContentsParsingCorrectness:
         result_names = [r.qualified_package_name for r in results]
         assert result_names == packages, f"Expected package names {packages}, got {result_names}.\nLine: {line!r}"
 
-    @settings(max_examples=100)
     @given(lines_data=st.lists(_contents_line_data(), min_size=1, max_size=5))
     def test_multiple_lines_produce_correct_total_ownerships(self, lines_data: list[tuple[str, list[str]]]) -> None:
         """Multiple Contents lines produce the correct total FileOwnership count."""
@@ -177,7 +173,6 @@ class TestProperty7ContentsParsingCorrectness:
             f"Expected {expected_total} total FileOwnership records, got {len(results)}.\nContent:\n{content}"
         )
 
-    @settings(max_examples=100)
     @given(data=_contents_line_data())
     def test_ownership_is_file_ownership_instance(self, data: tuple[str, list[str]]) -> None:
         """Each result is a FileOwnership value object."""
@@ -264,7 +259,6 @@ class TestProperty8ContentsHeaderInvariance:
 
     # Feature: repository-indexer, Property 8: Contents header invariance
 
-    @settings(max_examples=100)
     @given(data=_contents_body_with_headers())
     def test_prepending_headers_does_not_change_results(self, data: tuple[str, list[str]]) -> None:
         """Prepending non-data header lines produces the same FileOwnership set."""

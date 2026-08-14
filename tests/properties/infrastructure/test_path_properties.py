@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.mirror.paths import (
@@ -120,7 +120,6 @@ class TestProperty10LocalPathDerivation:
     the derived local paths SHALL be distinct (no collisions).
     """
 
-    @settings(max_examples=200)
     @given(base_url=_base_url_strategy)
     def test_derived_path_contains_hostname(self, base_url: str) -> None:
         """**Validates: Requirements 5.1**.
@@ -142,7 +141,6 @@ class TestProperty10LocalPathDerivation:
             f"Hostname '{hostname}' not found in path parts {result.parts} for URL '{base_url}'"
         )
 
-    @settings(max_examples=200)
     @given(base_url=_base_url_strategy)
     def test_derived_path_contains_url_path_segments(self, base_url: str) -> None:
         """**Validates: Requirements 5.1**.
@@ -167,7 +165,6 @@ class TestProperty10LocalPathDerivation:
                         f"URL path segment '{segment}' not in path parts {result.parts} for URL '{base_url}'"
                     )
 
-    @settings(max_examples=200)
     @given(
         scheme=_scheme_strategy,
         host1=_hostname_strategy,
@@ -204,7 +201,6 @@ class TestProperty10LocalPathDerivation:
 
         assert result1 != result2, f"URLs '{url1}' and '{url2}' produced same path '{result1}'"
 
-    @settings(max_examples=200)
     @given(base_url=_base_url_strategy)
     def test_derived_path_starts_with_mirror_base(self, base_url: str) -> None:
         """**Validates: Requirements 5.1**.
@@ -234,7 +230,6 @@ class TestProperty11RelativePathPreservation:
     repository's local root directory.
     """
 
-    @settings(max_examples=200)
     @given(relative_path=_relative_path_strategy)
     def test_file_path_starts_with_mirror_root(self, relative_path: str) -> None:
         """**Validates: Requirements 5.2**.
@@ -247,7 +242,6 @@ class TestProperty11RelativePathPreservation:
 
         assert str(result).startswith(str(mirror_root)), f"Path '{result}' does not start with root '{mirror_root}'"
 
-    @settings(max_examples=200)
     @given(relative_path=_relative_path_strategy)
     def test_path_suffix_matches_relative_path(self, relative_path: str) -> None:
         """**Validates: Requirements 5.2**.
@@ -267,7 +261,6 @@ class TestProperty11RelativePathPreservation:
             f"Relative portion '{result_relative}' does not match expected '{expected}' for input '{relative_path}'"
         )
 
-    @settings(max_examples=200)
     @given(relative_path=_relative_path_strategy)
     def test_leading_slashes_are_stripped(self, relative_path: str) -> None:
         """**Validates: Requirements 5.2**.
@@ -290,7 +283,6 @@ class TestProperty11RelativePathPreservation:
         result_clean = derive_file_path(mirror_root, relative_path)
         assert result == result_clean, f"Leading slash produced different result: '{result}' vs '{result_clean}'"
 
-    @settings(max_examples=200)
     @given(
         relative_path1=_relative_path_strategy,
         relative_path2=_relative_path_strategy,

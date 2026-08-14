@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -129,7 +129,6 @@ class TestRepositoryRoundTripSurrogateKey:
     equivalent field values.
     """
 
-    @settings(max_examples=200)
     @given(
         url=_url_strategy(),
         sha256=_sha256_hex(),
@@ -176,7 +175,6 @@ class TestRepositoryRoundTripSurrogateKey:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),
@@ -244,7 +242,6 @@ class TestRepositoryRoundTripNaturalKey:
     an entity with equivalent field values.
     """
 
-    @settings(max_examples=200)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),
@@ -315,7 +312,6 @@ class TestRepositoryStateFiltering:
     subset of entities whose state equals that state.
     """
 
-    @settings(max_examples=200)
     @given(
         states=st.lists(
             st.sampled_from(list(RepositoryFileState)),
@@ -380,7 +376,6 @@ class TestEmptyFindReturnsEmptyList:
     repository.find(**filters) returns an empty list.
     """
 
-    @settings(max_examples=200)
     @given(
         nonexistent_url=_url_strategy(),
     )
@@ -409,7 +404,6 @@ class TestEmptyFindReturnsEmptyList:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),
@@ -454,7 +448,6 @@ class TestMissingEntityLookupRaisesError:
     the entity type, key name, and requested key value.
     """
 
-    @settings(max_examples=200)
     @given(
         nonexistent_id=st.integers(min_value=1, max_value=2**31),
     )
@@ -487,7 +480,6 @@ class TestMissingEntityLookupRaisesError:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         nonexistent_id=st.integers(min_value=1, max_value=2**31),
     )

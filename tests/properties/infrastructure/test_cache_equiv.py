@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -151,7 +151,6 @@ class TestCacheEquivalenceStoreGet:
     returns an enrichment where all fields are equal to the original.
     """
 
-    @settings(max_examples=100)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),
@@ -210,7 +209,6 @@ class TestCacheEquivalenceSnapshotIsolation:
     Store with snap=X, get with snap=Y (Y != X) → None.
     """
 
-    @settings(max_examples=100)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),
@@ -276,7 +274,6 @@ class TestCacheEquivalenceUpsert:
     enrichment_2.
     """
 
-    @settings(max_examples=100)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),

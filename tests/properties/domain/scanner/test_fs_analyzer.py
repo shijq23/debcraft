@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.filesystem_analyzer import analyze_filesystem
@@ -159,7 +159,6 @@ class TestProperty9FilesystemAnalyzerOutputInvariants:
     **Validates: Requirements 11.3, 11.4**
     """
 
-    @settings(max_examples=200)
     @given(data=st_fs_analyzer_input())
     def test_no_duplicate_package_names_in_output(
         self,
@@ -189,7 +188,6 @@ class TestProperty9FilesystemAnalyzerOutputInvariants:
         # Assert no duplicates
         assert len(output_names) == len(set(output_names)), f"Duplicate package names found in output: {output_names}"
 
-    @settings(max_examples=200)
     @given(data=st_fs_analyzer_input())
     def test_all_statuses_are_inferred(
         self,
@@ -217,7 +215,6 @@ class TestProperty9FilesystemAnalyzerOutputInvariants:
         for pkg in result.packages:
             assert pkg.status == "inferred", f"Package '{pkg.name}' has status '{pkg.status}', expected 'inferred'"
 
-    @settings(max_examples=100)
     @given(data=st_fs_analyzer_input())
     def test_output_count_at_most_unique_packages(
         self,

@@ -14,7 +14,7 @@ from __future__ import annotations
 import string
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.license_mapper import LicenseMapper
@@ -141,7 +141,6 @@ class TestProperty6LicenseMapperResultInvariant:
     **Validates: Requirements 7.8**
     """
 
-    @settings(max_examples=100)
     @given(input_text=_arbitrary_text)
     def test_result_invariant_for_arbitrary_input(self, input_text: str) -> None:
         """All result fields satisfy their invariants for any input."""
@@ -187,7 +186,6 @@ class TestProperty7LicenseMapperExactMatchConfidence:
     **Validates: Requirements 7.1, 7.9**
     """
 
-    @settings(max_examples=100)
     @given(identifier=spdx_identifier_with_case_variation())
     def test_exact_match_returns_confidence_100(self, identifier: str) -> None:
         """SPDX identifiers (any case) map with confidence 100 and ExactSPDX."""
@@ -220,7 +218,6 @@ class TestProperty8LicenseMapperNormalizedSpelling:
     **Validates: Requirements 7.3**
     """
 
-    @settings(max_examples=100)
     @given(variation=normalized_spelling_variation())
     def test_normalized_spelling_returns_confidence_99(self, variation: str) -> None:
         """Spelling variations map with confidence 99 and NormalizedSpelling."""
@@ -267,7 +264,6 @@ class TestProperty9LicenseMapperUnmappedFallback:
     **Validates: Requirements 7.7**
     """
 
-    @settings(max_examples=100)
     @given(gibberish=unmapped_gibberish())
     def test_unmapped_returns_license_ref_pattern(self, gibberish: str) -> None:
         """Unmappable input produces LicenseRef-debcraft-* with confidence 0."""
@@ -350,7 +346,6 @@ class TestProperty10LicenseMapperFuzzyConfidenceClamping:
     **Validates: Requirements 7.5**
     """
 
-    @settings(max_examples=100)
     @given(input_text=fuzzy_match_candidate())
     def test_fuzzy_confidence_is_clamped(self, input_text: str) -> None:
         """If FuzzySimilarity is used, confidence is in [90, 97]."""

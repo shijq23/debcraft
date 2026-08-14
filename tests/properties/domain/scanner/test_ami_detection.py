@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.values import (
@@ -198,7 +198,6 @@ class TestProperty8AMIFormatDetection:
     ScanResult unchanged.
     """
 
-    @settings(max_examples=100)
     @given(
         header=st_qcow2_header(),
         qcow2_result=st_scan_result(),
@@ -244,7 +243,6 @@ class TestProperty8AMIFormatDetection:
         finally:
             os.unlink(temp_path)
 
-    @settings(max_examples=100)
     @given(
         header=st_non_qcow2_header(),
         qcow2_result=st_scan_result(),
@@ -290,7 +288,6 @@ class TestProperty8AMIFormatDetection:
         finally:
             os.unlink(temp_path)
 
-    @settings(max_examples=100)
     @given(
         header=st_qcow2_header(),
         expected_result=st_scan_result(),
@@ -333,7 +330,6 @@ class TestProperty8AMIFormatDetection:
         finally:
             os.unlink(temp_path)
 
-    @settings(max_examples=100)
     @given(
         header=st_non_qcow2_header(),
         expected_result=st_scan_result(),

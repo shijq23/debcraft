@@ -21,7 +21,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.mirror.config_reader import ConfigReader
@@ -30,6 +30,16 @@ from debcraft.infrastructure.mirror.errors import MirrorConfigurationError
 # ---------------------------------------------------------------------------
 # Strategies
 # ---------------------------------------------------------------------------
+
+# Valid rate config values for round-trip tests (Property 4)
+_valid_rps_strategy = st.floats(
+    min_value=1.0,
+    max_value=1000.0,
+    allow_nan=False,
+    allow_infinity=False,
+)
+_valid_burst_strategy = st.integers(min_value=1, max_value=200)
+_valid_max_connections_strategy = st.integers(min_value=1, max_value=200)
 
 # Invalid RPS values: too low or too high
 _invalid_rps_strategy = st.one_of(
@@ -175,6 +185,117 @@ architectures = ["amd64"]
 
 
 # ---------------------------------------------------------------------------
+# Property 4: Rate limit config parsing round-trip
+# ---------------------------------------------------------------------------
+
+
+def _make_config_with_valid_rate_limit(
+    rps: float,
+    burst: int,
+    max_connections_per_repo: int = 20,
+) -> tuple[Path, ConfigReader]:
+    """Create a temp TOML config with valid rate_limit_rps and rate_limit_burst."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as tmp:
+        tmp.write(
+            f"""[settings]
+download_timeout = 300
+max_connections_per_repo = {max_connections_per_repo}
+max_total_connections = 60
+rate_limit_rps = {rps}
+rate_limit_burst = {burst}
+
+[[repository]]
+name = "test"
+base_url = "https://example.com"
+suites = ["stable"]
+components = ["main"]
+architectures = ["amd64"]
+"""
+        )
+    config_path = Path(tmp.name)
+    storage = _FakeStorageEngine(config_path)
+    return config_path, ConfigReader(storage)
+
+
+def _make_config_without_burst(
+    rps: float,
+    max_connections_per_repo: int = 20,
+) -> tuple[Path, ConfigReader]:
+    """Create a temp TOML config with rate_limit_rps but no rate_limit_burst."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as tmp:
+        tmp.write(
+            f"""[settings]
+download_timeout = 300
+max_connections_per_repo = {max_connections_per_repo}
+max_total_connections = 60
+rate_limit_rps = {rps}
+
+[[repository]]
+name = "test"
+base_url = "https://example.com"
+suites = ["stable"]
+components = ["main"]
+architectures = ["amd64"]
+"""
+        )
+    config_path = Path(tmp.name)
+    storage = _FakeStorageEngine(config_path)
+    return config_path, ConfigReader(storage)
+
+
+@pytest.mark.unit
+@pytest.mark.mirror
+class TestProperty4ConfigParsingRoundTrip:
+    """Property 4: Rate limit config parsing round-trip.
+
+    For any numeric value in [1, 1000] written as rate_limit_rps and any integer
+    in [1, 200] written as rate_limit_burst in a valid TOML [settings] section,
+    parsing the configuration SHALL produce a MirrorConfig with those exact values.
+    When rate_limit_burst is omitted, it SHALL default to the value of
+    max_connections_per_repo.
+
+    **Validates: Requirements 2.1, 2.2, 2.4**
+    """
+
+    @given(rps=_valid_rps_strategy, burst=_valid_burst_strategy)
+    def test_valid_rps_and_burst_round_trip(self, rps: float, burst: int) -> None:
+        """Validate Requirements 2.1, 2.2.
+
+        Any numeric rps in [1, 1000] and burst in [1, 200] written to TOML
+        produce a MirrorConfig with those exact values.
+        """
+        config_path, reader = _make_config_with_valid_rate_limit(rps, burst)
+        try:
+            config = reader.read()
+            assert config.rate_limit_rps == pytest.approx(rps)
+            assert config.rate_limit_burst == burst
+        finally:
+            config_path.unlink(missing_ok=True)
+
+    @given(
+        rps=_valid_rps_strategy,
+        max_connections=_valid_max_connections_strategy,
+    )
+    def test_omitted_burst_defaults_to_max_connections_per_repo(
+        self,
+        rps: float,
+        max_connections: int,
+    ) -> None:
+        """Validate Requirements 2.4.
+
+        When rate_limit_burst is omitted from TOML, it SHALL default to
+        the value of max_connections_per_repo.
+        """
+        config_path, reader = _make_config_without_burst(rps, max_connections)
+        try:
+            config = reader.read()
+            assert config.rate_limit_rps == pytest.approx(rps)
+            assert config.rate_limit_burst == max_connections
+        finally:
+            config_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
 # Property 5: Rate limit config validation rejects invalid values
 # ---------------------------------------------------------------------------
 
@@ -192,7 +313,6 @@ class TestProperty5ConfigValidationRejection:
     **Validates: Requirements 2.5, 2.6, 2.7**
     """
 
-    @settings(max_examples=200)
     @given(rps=_invalid_rps_strategy)
     def test_invalid_rps_produces_validation_error(self, rps: float) -> None:
         """Validate Requirements 2.5.
@@ -212,7 +332,6 @@ class TestProperty5ConfigValidationRejection:
         finally:
             config_path.unlink(missing_ok=True)
 
-    @settings(max_examples=200)
     @given(burst=_invalid_burst_strategy)
     def test_invalid_burst_produces_validation_error(self, burst: int) -> None:
         """Validate Requirements 2.6.
@@ -232,7 +351,6 @@ class TestProperty5ConfigValidationRejection:
         finally:
             config_path.unlink(missing_ok=True)
 
-    @settings(max_examples=200)
     @given(string_val=_non_numeric_string_strategy)
     def test_non_numeric_rps_produces_validation_error(self, string_val: str) -> None:
         """Validate Requirements 2.7.
@@ -253,7 +371,6 @@ class TestProperty5ConfigValidationRejection:
         finally:
             config_path.unlink(missing_ok=True)
 
-    @settings(max_examples=200)
     @given(string_val=_non_numeric_string_strategy)
     def test_non_numeric_burst_produces_validation_error(self, string_val: str) -> None:
         """Validate Requirements 2.7.

@@ -334,7 +334,7 @@ class TestArtifactDeduplication:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(
         num_unique=st.integers(min_value=1, max_value=20),
         num_duplicates=st.integers(min_value=1, max_value=10),

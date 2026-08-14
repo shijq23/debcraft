@@ -10,10 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from debcraft.domain.scanner.values import IdentifiedPackage
+
 if TYPE_CHECKING:
     from debcraft.domain.scanner.ports import ContentsIndexPort, PackageLookupPort
-
-from debcraft.domain.scanner.values import IdentifiedPackage
 
 
 @dataclass(frozen=True)

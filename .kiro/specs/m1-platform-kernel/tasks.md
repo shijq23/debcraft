@@ -47,7 +47,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - Implement `Scope.close()` disposing all scoped instances
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10_
 
-  - [ ]* 2.3 Write property tests for container (Properties 1-6)
+  - [x]* 2.3 Write property tests for container (Properties 1-6)
     - **Property 1: Singleton resolution identity** — resolving N times returns same object
     - **Property 2: Transient resolution distinctness** — resolving N times returns N distinct objects
     - **Property 3: Scoped resolution isolation** — same scope returns same instance, different scope returns different instance
@@ -57,7 +57,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - File: `tests/unit/platform/kernel/test_container_properties.py`
     - **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.8, 1.9**
 
-  - [ ]* 2.4 Write unit tests for container
+  - [x]* 2.4 Write unit tests for container
     - Test singleton registration and resolution
     - Test transient creates new instances each time
     - Test scoped isolation between scopes
@@ -85,7 +85,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - Define workflow event dataclasses: `WorkflowStartedEvent`, `WorkflowCompletedEvent`, `WorkflowFailedEvent`, `WorkflowCancelledEvent`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10_
 
-  - [ ]* 3.3 Write property tests for event bus (Properties 7-11)
+  - [x]* 3.3 Write property tests for event bus (Properties 7-11)
     - **Property 7: Event dispatch completeness and ordering** — all N handlers invoked in registration order
     - **Property 8: Handler isolation on failure** — K failing handlers don't prevent remaining (N-K) from running
     - **Property 9: Correlation ID propagation** — all handlers receive event with same correlation_id
@@ -94,7 +94,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - File: `tests/unit/platform/kernel/test_events_properties.py`
     - **Validates: Requirements 2.2, 2.3, 2.5, 2.6, 2.7, 2.8, 2.9**
 
-  - [ ]* 3.4 Write unit tests for event bus
+  - [x]* 3.4 Write unit tests for event bus
     - Test subscribe and dispatch single handler
     - Test sync and async handler support
     - Test handler registration ordering
@@ -105,7 +105,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - File: `tests/unit/platform/kernel/test_events.py`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10_
 
-- [ ] 4. Configuration and logging (parallel-safe)
+- [x] 4. Configuration and logging (parallel-safe)
   - [x] 4.1 Implement configuration contract in `src/debcraft/platform/contracts/configuration.py`
     - Define `ConfigurationService` ABC with `get_section()`, `register_section()`, `reload()` abstract methods
     - Use `TypeVar("T")` for typed section retrieval
@@ -123,7 +123,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - Support plugin section registration
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 
-  - [ ]* 4.3 Write property tests for configuration (Properties 15-17)
+  - [x]* 4.3 Write property tests for configuration (Properties 15-17)
     - **Property 15: Configuration precedence** — highest precedence layer value wins
     - **Property 16: Environment variable mapping** — `DEBCRAFT_SECTION__KEY` maps correctly
     - **Property 17: Configuration validation rejects invalid values** — invalid field raises `ConfigurationError`
@@ -144,13 +144,13 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - Rich console handler integration to avoid display corruption when live displays are active
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9_
 
-  - [ ]* 4.6 Write property tests for logging (Properties 18-19)
+  - [x]* 4.6 Write property tests for logging (Properties 18-19)
     - **Property 18: Human log format structure** — output contains timestamp, level, component, message in order; includes correlation_id when active
     - **Property 19: JSON log format structure** — output is valid JSON with required keys
     - File: `tests/unit/platform/kernel/test_logging_properties.py`
     - **Validates: Requirements 5.1, 5.3, 5.4, 5.5**
 
-  - [ ]* 4.7 Write unit tests for configuration and logging
+  - [x]* 4.7 Write unit tests for configuration and logging
     - Test TOML loading with valid and invalid files
     - Test precedence ordering (env vars override file values)
     - Test environment variable mapping with double underscore separator
@@ -179,13 +179,13 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - Each instance owned by a single `WorkflowContext`
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9_
 
-  - [ ]* 5.3 Write property tests for resource manager (Properties 20-21)
+  - [x]* 5.3 Write property tests for resource manager (Properties 20-21)
     - **Property 20: Resource cleanup reverse ordering** — N resources cleaned up in LIFO order
     - **Property 21: Resource cleanup isolation on failure** — K failing cleanups don't prevent remaining (N-K) from being called
     - File: `tests/unit/platform/kernel/test_resources_properties.py`
     - **Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5**
 
-  - [ ]* 5.4 Write unit tests for resource manager
+  - [x]* 5.4 Write unit tests for resource manager
     - Test async resource acquisition and cleanup
     - Test sync resource acquisition and cleanup
     - Test reverse-order cleanup
@@ -219,7 +219,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - Implement a default `ProgressReporter` (e.g., logging-based)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 7.5, 7.7, 7.8, 7.9_
 
-  - [ ]* 6.3 Write property tests for workflow engine (Properties 12-14, 22-24)
+  - [x]* 6.3 Write property tests for workflow engine (Properties 12-14, 22-24)
     - **Property 12: Workflow summary generation** — terminal state produces valid WorkflowSummary
     - **Property 13: Workflow lifecycle event publishing** — run publishes WorkflowStartedEvent + exactly one terminal event
     - **Property 14: CancellationToken monotonic transition** — once cancelled, stays cancelled
@@ -229,7 +229,7 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - File: `tests/unit/platform/kernel/test_workflow_properties.py`
     - **Validates: Requirements 3.5, 3.8, 3.11, 7.7, 7.8, 7.9**
 
-  - [ ]* 6.4 Write unit tests for workflow engine
+  - [x]* 6.4 Write unit tests for workflow engine
     - Test workflow lifecycle transitions (Created → Running → Completed)
     - Test failed workflow transitions and error recording
     - Test cancellation token cooperative cancellation
@@ -260,12 +260,12 @@ Build the domain-agnostic runtime kernel for DebCraft providing seven core compo
     - `kernel/__init__.py` should export: `bootstrap`
     - _Requirements: 8.1, 8.4_
 
-  - [ ]* 7.3 Write property test for bootstrap (Property 25)
+  - [x]* 7.3 Write property test for bootstrap (Property 25)
     - **Property 25: Bootstrap completeness** — resolving each kernel contract interface from bootstrapped container succeeds
     - File: `tests/unit/platform/kernel/test_bootstrap.py`
     - **Validates: Requirements 10.1, 10.2**
 
-  - [ ]* 7.4 Write unit tests for bootstrap and integration
+  - [x]* 7.4 Write unit tests for bootstrap and integration
     - Test bootstrap returns a Container with all expected registrations
     - Test resolving each service interface succeeds
     - Test WorkflowEngine receives EventBus, LoggerFactory via constructor injection

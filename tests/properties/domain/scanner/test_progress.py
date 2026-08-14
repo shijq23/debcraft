@@ -19,7 +19,7 @@ import tempfile
 from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.values import Artifact, ArtifactType
@@ -127,7 +127,6 @@ class TestProperty5ProgressMonotonicity:
     **Validates: Requirements 13.4, 13.5**
     """
 
-    @settings(max_examples=50)
     @given(dpkg_content=st_dpkg_status_file())
     async def test_progress_is_monotonically_non_decreasing(
         self,
@@ -172,7 +171,6 @@ class TestProperty5ProgressMonotonicity:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(dpkg_content=st_dpkg_status_file())
     async def test_final_progress_is_100_on_successful_completion(
         self,
@@ -217,7 +215,6 @@ class TestProperty5ProgressMonotonicity:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(dpkg_content=st_dpkg_status_file())
     async def test_progress_values_within_valid_range(
         self,

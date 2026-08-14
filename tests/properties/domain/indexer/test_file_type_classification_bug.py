@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.indexer.service import _infer_file_type
@@ -106,7 +106,6 @@ class TestProperty1BugConditionFileTypeClassification:
     **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
     """
 
-    @settings(max_examples=200)
     @given(url=_url_with_keyword_in_directory())
     def test_bug_condition_binary_files_in_keyword_directories_are_unknown(self, url: str) -> None:
         """Binary package files in directories containing metadata keywords should be 'unknown'.
@@ -200,7 +199,6 @@ class TestProperty2PreservationMetadataClassification:
     **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6**
     """
 
-    @settings(max_examples=200)
     @given(url=_packages_file_url())
     def test_preservation_packages_files_classified_correctly(self, url: str) -> None:
         """Legitimate Packages files (with various paths/compressions) are classified as 'packages'.
@@ -213,7 +211,6 @@ class TestProperty2PreservationMetadataClassification:
             f"instead of 'packages'. Legitimate Packages files must be classified correctly."
         )
 
-    @settings(max_examples=200)
     @given(url=_sources_file_url())
     def test_preservation_sources_files_classified_correctly(self, url: str) -> None:
         """Legitimate Sources files (with various paths/compressions) are classified as 'sources'.
@@ -226,7 +223,6 @@ class TestProperty2PreservationMetadataClassification:
             f"instead of 'sources'. Legitimate Sources files must be classified correctly."
         )
 
-    @settings(max_examples=200)
     @given(url=_contents_file_url())
     def test_preservation_contents_files_classified_correctly(self, url: str) -> None:
         """Legitimate Contents files (with various paths/compressions) are classified as 'contents'.
@@ -239,7 +235,6 @@ class TestProperty2PreservationMetadataClassification:
             f"instead of 'contents'. Legitimate Contents files must be classified correctly."
         )
 
-    @settings(max_examples=200)
     @given(url=_release_file_url())
     def test_preservation_release_files_classified_correctly(self, url: str) -> None:
         """Legitimate Release/InRelease files are classified as 'release'.

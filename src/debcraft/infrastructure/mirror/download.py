@@ -21,6 +21,7 @@ from debcraft.domain.mirror.values import DownloadResult
 from debcraft.infrastructure.mirror.errors import (
     ChecksumMismatchError,
     HttpClientError,
+    HttpRateLimitError,
     HttpServerError,
     NetworkError,
     SizeMismatchError,
@@ -40,6 +41,15 @@ _MAX_BACKOFF = 30.0  # seconds
 _JITTER_FACTOR = 0.25
 
 
+@dataclass(frozen=True)
+class DownloadSpec:
+    """Verification parameters for a single download attempt."""
+
+    expected_sha256: str
+    expected_size: int
+    timeout: int
+
+
 @dataclass
 class DownloadTask:
     """A single file download task for batch operations."""
@@ -57,18 +67,26 @@ class DownloadCoordinator:
         self,
         storage_engine: StorageEngine,
         config: MirrorConfig,
+        rate_limiter: TokenBucketRateLimiter | None = None,
     ) -> None:
         """Initialize the download coordinator.
 
         Args:
             storage_engine: Storage engine for path resolution.
             config: Mirror configuration with connection limits and timeout.
+            rate_limiter: Optional token bucket rate limiter for throttling
+                outgoing HTTP requests. If None, one is created during start().
         """
         self._storage_engine = storage_engine
         self._config = config
         self._session: aiohttp.ClientSession | None = None
         self._connector: aiohttp.TCPConnector | None = None
-        self._rate_limiter: TokenBucketRateLimiter | None = None
+        self._rate_limiter = rate_limiter
+
+    @property
+    def config(self) -> MirrorConfig:
+        """Public read-only access to the mirror configuration."""
+        return self._config
 
     async def start(self) -> None:
         """Initialize aiohttp session with connection pooling."""
@@ -78,8 +96,9 @@ class DownloadCoordinator:
             ttl_dns_cache=300,
         )
         self._session = aiohttp.ClientSession(connector=self._connector)
-        burst_size = self._config.rate_limit_burst or self._config.max_connections_per_repo
-        self._rate_limiter = TokenBucketRateLimiter(rate=self._config.rate_limit_rps, burst_size=burst_size)
+        if self._rate_limiter is None:
+            burst_size = self._config.rate_limit_burst or self._config.max_connections_per_repo
+            self._rate_limiter = TokenBucketRateLimiter(rate=self._config.rate_limit_rps, burst_size=burst_size)
 
     async def close(self) -> None:
         """Close the aiohttp session."""
@@ -130,14 +149,18 @@ class DownloadCoordinator:
             extra={"url": url, "dest_path": str(dest_path)},
         )
 
+        spec = DownloadSpec(
+            expected_sha256=expected_sha256,
+            expected_size=expected_size,
+            timeout=effective_timeout,
+        )
+
         for attempt in range(_MAX_ATTEMPTS):
             try:
                 result = await self._attempt_download(
                     url=url,
                     dest_path=dest_path,
-                    expected_sha256=expected_sha256,
-                    expected_size=expected_size,
-                    timeout=effective_timeout,
+                    spec=spec,
                     attempt=attempt,
                 )
                 logger.debug(
@@ -148,9 +171,23 @@ class DownloadCoordinator:
                     },
                 )
                 return result
-            except HttpClientError:
-                # 4xx errors are not retriable
-                raise
+            except HttpRateLimitError as exc:
+                last_error = exc
+                if attempt < _MAX_ATTEMPTS - 1:
+                    delay = _compute_backoff_delay(attempt, base=5.0, maximum=60.0, jitter_factor=0.5)
+                    logger.warning(
+                        "Rate limited (%d), retrying with extended backoff",
+                        exc.status_code,
+                        extra={
+                            "url": url,
+                            "attempt": attempt + 1,
+                            "max_attempts": _MAX_ATTEMPTS,
+                            "backoff_seconds": round(delay, 2),
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        },
+                    )
+                    await asyncio.sleep(delay)
             except (
                 HttpServerError,
                 NetworkError,
@@ -159,7 +196,7 @@ class DownloadCoordinator:
             ) as exc:
                 last_error = exc
                 if attempt < _MAX_ATTEMPTS - 1:
-                    delay = _compute_backoff_delay(attempt)
+                    delay = _compute_backoff_delay(attempt, base=1.0, maximum=30.0, jitter_factor=0.25)
                     logger.warning(
                         "Download failed, retrying",
                         extra={
@@ -211,6 +248,12 @@ class DownloadCoordinator:
         Returns:
             List of DownloadResult in the same order as the input tasks.
         """
+        burst_size = self._config.rate_limit_burst or self._config.max_connections_per_repo
+        logger.debug(
+            "Rate limit settings: rps=%.1f, burst=%d",
+            self._config.rate_limit_rps,
+            burst_size,
+        )
         logger.debug(
             "Starting batch download",
             extra={"total_files": len(tasks), "max_concurrent": max_concurrent},
@@ -298,13 +341,72 @@ class DownloadCoordinator:
         except aiohttp.ClientError:
             return False
 
+    def _verify_download(
+        self,
+        url: str,
+        part_path: Path,
+        spec: DownloadSpec,
+        attempt: int,
+        *,
+        bytes_written: int,
+        sha256_hash: hashlib._Hash,
+    ) -> None:
+        """Verify size and SHA256 of a downloaded file.
+
+        Args:
+            url: Source URL (for error reporting).
+            part_path: Path to the .part file to verify.
+            spec: Verification parameters.
+            attempt: Current attempt number.
+            bytes_written: Number of bytes written.
+            sha256_hash: SHA256 hash object with accumulated data.
+
+        Raises:
+            SizeMismatchError: If size doesn't match expected.
+            ChecksumMismatchError: If SHA256 doesn't match expected.
+        """
+        if spec.expected_size and bytes_written != spec.expected_size:
+            logger.warning(
+                "Size mismatch detected",
+                extra={
+                    "url": url,
+                    "expected_size": spec.expected_size,
+                    "actual_size": bytes_written,
+                    "attempt": attempt,
+                },
+            )
+            part_path.unlink()
+            raise SizeMismatchError(
+                url=url,
+                expected_bytes=spec.expected_size,
+                actual_bytes=bytes_written,
+                retry_count=attempt,
+            )
+
+        actual_sha256 = sha256_hash.hexdigest()
+        if spec.expected_sha256 and actual_sha256 != spec.expected_sha256:
+            logger.warning(
+                "SHA256 checksum mismatch",
+                extra={
+                    "url": url,
+                    "expected_sha256": spec.expected_sha256,
+                    "actual_sha256": actual_sha256,
+                    "attempt": attempt,
+                },
+            )
+            part_path.unlink()
+            raise ChecksumMismatchError(
+                url=url,
+                expected=spec.expected_sha256,
+                actual=actual_sha256,
+                retry_count=attempt,
+            )
+
     async def _attempt_download(
         self,
         url: str,
         dest_path: Path,
-        expected_sha256: str,
-        expected_size: int,
-        timeout: int,
+        spec: DownloadSpec,
         attempt: int,
     ) -> DownloadResult:
         """Execute a single download attempt.
@@ -312,15 +414,14 @@ class DownloadCoordinator:
         Args:
             url: URL to download.
             dest_path: Final destination path.
-            expected_sha256: Expected SHA256 hex digest.
-            expected_size: Expected file size in bytes.
-            timeout: Download timeout in seconds.
+            spec: Verification parameters (expected_sha256, expected_size, timeout).
             attempt: Current attempt number (0-indexed).
 
         Returns:
             DownloadResult on success.
 
         Raises:
+            HttpRateLimitError: On 429 responses (rate limiting).
             HttpClientError: On 4xx responses.
             HttpServerError: On 5xx responses.
             NetworkError: On connection failures.
@@ -339,7 +440,7 @@ class DownloadCoordinator:
         if part_path.exists():
             part_path.unlink()
 
-        client_timeout = aiohttp.ClientTimeout(total=timeout)
+        client_timeout = aiohttp.ClientTimeout(total=spec.timeout)
 
         await self._rate_limiter.acquire()
 
@@ -353,6 +454,13 @@ class DownloadCoordinator:
                     "HTTP response received",
                     extra={"url": url, "status_code": status, "attempt": attempt},
                 )
+
+                if status == 429:
+                    raise HttpRateLimitError(
+                        url=url,
+                        status_code=status,
+                        retry_count=attempt,
+                    )
 
                 if 400 <= status < 500:
                     raise HttpClientError(
@@ -394,52 +502,24 @@ class DownloadCoordinator:
                 retry_count=attempt,
                 cause=exc,
             ) from exc
-        except (HttpClientError, HttpServerError):
+        except (HttpClientError, HttpRateLimitError, HttpServerError):
             # Clean up .part file on HTTP errors
             if part_path.exists():
                 part_path.unlink()
             raise
 
-        # Verify size
-        if expected_size and bytes_written != expected_size:
-            logger.warning(
-                "Size mismatch detected",
-                extra={
-                    "url": url,
-                    "expected_size": expected_size,
-                    "actual_size": bytes_written,
-                    "attempt": attempt,
-                },
-            )
-            part_path.unlink()
-            raise SizeMismatchError(
-                url=url,
-                expected_bytes=expected_size,
-                actual_bytes=bytes_written,
-                retry_count=attempt,
-            )
-
-        # Verify SHA256
-        actual_sha256 = sha256_hash.hexdigest()
-        if expected_sha256 and actual_sha256 != expected_sha256:
-            logger.warning(
-                "SHA256 checksum mismatch",
-                extra={
-                    "url": url,
-                    "expected_sha256": expected_sha256,
-                    "actual_sha256": actual_sha256,
-                    "attempt": attempt,
-                },
-            )
-            part_path.unlink()
-            raise ChecksumMismatchError(
-                url=url,
-                expected=expected_sha256,
-                actual=actual_sha256,
-                retry_count=attempt,
-            )
+        # Verify size and checksum
+        self._verify_download(
+            url,
+            part_path,
+            spec,
+            attempt,
+            bytes_written=bytes_written,
+            sha256_hash=sha256_hash,
+        )
 
         # Atomic rename
+        actual_sha256 = sha256_hash.hexdigest()
         os.replace(part_path, dest_path)
 
         # Set file mode to 0o644 (rw-r--r--) for apt compatibility
@@ -460,17 +540,26 @@ class DownloadCoordinator:
         )
 
 
-def _compute_backoff_delay(attempt: int) -> float:
+def _compute_backoff_delay(
+    attempt: int,
+    base: float = _BASE_BACKOFF,
+    maximum: float = _MAX_BACKOFF,
+    jitter_factor: float = _JITTER_FACTOR,
+) -> float:
     """Compute exponential backoff delay with jitter.
 
-    delay = min(1 * 2^attempt, 30) + random.uniform(0, delay * 0.25)
+    Formula: delay = min(base * 2^attempt, maximum) + random.uniform(0, computed_delay * jitter_factor)
+    Total is capped at maximum.
 
     Args:
         attempt: Current attempt number (0-indexed).
+        base: Base delay in seconds (default: 1.0).
+        maximum: Maximum delay in seconds (default: 30.0).
+        jitter_factor: Jitter multiplier applied to computed delay (default: 0.25).
 
     Returns:
         Delay in seconds before the next retry.
     """
-    delay: float = min(_BASE_BACKOFF * (2**attempt), _MAX_BACKOFF)
-    jitter = random.uniform(0, delay * _JITTER_FACTOR)  # noqa: S311
-    return delay + jitter
+    delay: float = min(base * (2**attempt), maximum)
+    jitter = random.uniform(0, delay * jitter_factor)  # noqa: S311
+    return min(delay + jitter, maximum)

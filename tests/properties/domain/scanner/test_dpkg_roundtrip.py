@@ -13,7 +13,7 @@ Property 1: dpkg Status Round-Trip
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
@@ -176,7 +176,6 @@ class TestProperty1DpkgRoundTrip:
     result.
     """
 
-    @settings(max_examples=200)
     @given(content=st_dpkg_status_file())
     def test_parse_format_parse_roundtrip_preserves_packages(self, content: str) -> None:
         """parse(format(parse(text).stanzas)).packages == parse(text).packages.
@@ -204,7 +203,6 @@ class TestProperty1DpkgRoundTrip:
             )
             assert pkg1.status == pkg2.status, f"Package {i} status mismatch: {pkg1.status!r} != {pkg2.status!r}"
 
-    @settings(max_examples=200)
     @given(content=st_dpkg_status_file())
     def test_format_produces_valid_dpkg_text(self, content: str) -> None:
         """format(parse(text).stanzas) produces valid dpkg text without double blank lines within stanzas.
@@ -225,7 +223,6 @@ class TestProperty1DpkgRoundTrip:
                     if line == "" and i == len(stanza_texts) - 1 and stanza_text.endswith("\n"):
                         continue
 
-    @settings(max_examples=200)
     @given(stanza=st_dpkg_stanza())
     def test_single_stanza_roundtrip(self, stanza: str) -> None:
         """A single stanza round-trips correctly through parse -> format -> parse.

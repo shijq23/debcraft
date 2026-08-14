@@ -116,6 +116,7 @@ class WorkflowContext:
         scope: Scope,
         cancellation_token: CancellationToken,
         progress_reporter: ProgressReporter,
+        *,
         resource_manager: ResourceManager,
         logger: Logger,
         event_bus: EventBus,

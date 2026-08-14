@@ -9,6 +9,15 @@ from pathlib import Path
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
+from hypothesis import HealthCheck, settings
+
+# ---------------------------------------------------------------------------
+# Hypothesis profiles: use HYPOTHESIS_PROFILE=ci for thorough runs in CI,
+# defaults to "dev" (fewer examples) for fast local iteration.
+# ---------------------------------------------------------------------------
+settings.register_profile("ci", max_examples=100)
+settings.register_profile("dev", max_examples=5, suppress_health_check=[HealthCheck.too_slow])
+settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
 
 
 @pytest.fixture(scope="session")

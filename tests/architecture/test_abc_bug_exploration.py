@@ -23,7 +23,7 @@ from abc import ABC
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "debcraft"
@@ -141,7 +141,6 @@ class TestABCBugConditionExploration:
     After the fix, they PASS.
     """
 
-    @settings(max_examples=5)
     @given(abc_name=st.sampled_from(INFRASTRUCTURE_ABCS))
     def test_infrastructure_abcs_not_reported_as_missing(self, abc_name: str) -> None:
         """Infrastructure ABCs with implementations should not be missing.

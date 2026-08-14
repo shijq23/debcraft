@@ -3,94 +3,40 @@
 from __future__ import annotations
 
 import asyncio
-import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 from rich.table import Table
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from debcraft.cli._formatting import format_bytes
+from debcraft.cli._progress import create_progress_bar
+from debcraft.cli._storage import MinimalStorageEngine
 from debcraft.infrastructure.mirror.config_reader import ConfigReader
 from debcraft.infrastructure.mirror.errors import DownloadError, MirrorConfigurationError, MirrorError
 from debcraft.infrastructure.storage.paths import resolve_xdg_path
 from debcraft.platform.contracts.events import EventBus
 from debcraft.platform.contracts.logging import Logger
 from debcraft.platform.contracts.persistence import DatabaseProvider
-from debcraft.platform.contracts.storage import StorageEngine
 from debcraft.platform.contracts.workflow import CancellationToken, ProgressReporter
 
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from rich.progress import Progress, TaskID
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from debcraft.domain.mirror.config import MirrorConfig
+    from debcraft.domain.mirror.config import MirrorConfig, RepositoryConfig
+    from debcraft.infrastructure.mirror.download import DownloadCoordinator
     from debcraft.platform.contracts.events import DomainEvent, EventHandler
     from debcraft.platform.contracts.persistence import DatabaseName
-    from debcraft.platform.contracts.storage import StoragePurpose
 
 mirror_app = typer.Typer(name="mirror", help="Repository mirror management commands.")
 console = Console()
-
-
-class _MinimalStorageEngine(StorageEngine):
-    """Minimal storage engine for CLI config and mirror path resolution.
-
-    Provides just enough of the StorageEngine interface (get_path)
-    for ConfigReader and MirrorEngine to resolve paths without requiring
-    full platform bootstrap.
-    """
-
-    def __init__(self) -> None:
-        xdg_config = os.environ.get("XDG_CONFIG_HOME", "")
-        if xdg_config:
-            self._config_dir = Path(xdg_config) / "debcraft"
-        else:
-            self._config_dir = Path.home() / ".config" / "debcraft"
-
-        xdg_cache = os.environ.get("XDG_CACHE_HOME", "")
-        if xdg_cache:
-            self._cache_dir = Path(xdg_cache) / "debcraft"
-        else:
-            self._cache_dir = Path.home() / ".cache" / "debcraft"
-
-    async def initialize(self) -> None:
-        """No-op for CLI context."""
-
-    async def shutdown(self) -> None:
-        """No-op for CLI context."""
-
-    def get_path(self, purpose: StoragePurpose, relative: str = "") -> Path:
-        """Resolve path for a storage purpose.
-
-        Args:
-            purpose: The named storage purpose ('config' or 'mirror').
-            relative: Optional relative path within the purpose directory.
-
-        Returns:
-            Absolute path to the resolved location.
-        """
-        if purpose == "config":
-            base = self._config_dir
-        elif purpose == "mirror":
-            base = self._cache_dir / "mirror"
-        else:
-            msg = f"Unsupported storage purpose for CLI: {purpose}"
-            raise ValueError(msg)
-
-        if relative:
-            return base / relative
-        return base
-
-    async def __aenter__(self) -> _MinimalStorageEngine:
-        """Enter async context."""
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        """Exit async context."""
 
 
 class _CliDatabaseProvider(DatabaseProvider):
@@ -118,7 +64,7 @@ class _CliDatabaseProvider(DatabaseProvider):
         """Create mirror tables in the database if not already done."""
         if not self._initialized:
             # Import models to register them with Base.metadata
-            import debcraft.infrastructure.models.mirror  # noqa: F401
+            import debcraft.infrastructure.models.mirror  # noqa: F401  # pylint: disable=unused-import
             from debcraft.infrastructure.models.base import Base
 
             async with self._engine.begin() as conn:
@@ -145,28 +91,9 @@ def _read_config() -> MirrorConfig:
     Raises:
         MirrorConfigurationError: If config file is invalid.
     """
-    storage = _MinimalStorageEngine()
+    storage = MinimalStorageEngine()
     reader = ConfigReader(storage)
     return reader.read()
-
-
-def _format_bytes(n: int) -> str:
-    """Format byte count as human-readable string.
-
-    Args:
-        n: Number of bytes.
-
-    Returns:
-        Human-readable string (e.g., "1.5 MiB").
-    """
-    if n < 1024:
-        return f"{n} B"
-    elif n < 1024 * 1024:
-        return f"{n / 1024:.1f} KiB"
-    elif n < 1024 * 1024 * 1024:
-        return f"{n / (1024 * 1024):.1f} MiB"
-    else:
-        return f"{n / (1024 * 1024 * 1024):.1f} GiB"
 
 
 def _display_sync_summary(result: dict[str, int]) -> None:
@@ -182,9 +109,123 @@ def _display_sync_summary(result: dict[str, int]) -> None:
     table.add_row("Files downloaded", str(result["downloaded"]))
     table.add_row("Files skipped", str(result["skipped"]))
     table.add_row("Files failed", str(result["failed"]))
-    table.add_row("Bytes transferred", _format_bytes(result["bytes_transferred"]))
+    table.add_row("Bytes transferred", format_bytes(result["bytes_transferred"]))
 
     console.print(table)
+
+
+class _CliProgressReporter(ProgressReporter):
+    """Reports progress updates to the Rich progress bar."""
+
+    def __init__(self, progress: Progress, task_id: TaskID) -> None:
+        self._progress = progress
+        self._task_id = task_id
+
+    def report(self, percentage: float, message: str = "") -> None:
+        self._progress.update(self._task_id, completed=percentage, description=message)
+
+
+class _CliCancellationToken(CancellationToken):
+    """Non-cancelling token for normal CLI operation."""
+
+
+class _CliEventBus(EventBus):
+    """No-op event bus for CLI context."""
+
+    def subscribe(self, event_type: type, handler: EventHandler) -> None:
+        pass
+
+    def unsubscribe(self, event_type: type, handler: EventHandler) -> None:
+        pass
+
+    async def publish(self, event: DomainEvent) -> None:
+        pass
+
+
+class _CliLogger(Logger):
+    """Logger that delegates to Python's logging module.
+
+    When --verbose is active the root 'debcraft' logger has a
+    DEBUG-level handler, so messages propagate to stderr.  Without
+    --verbose the root logger is at WARNING by default and these
+    messages are silently discarded.
+    """
+
+    def __init__(self) -> None:
+        import logging
+
+        self._log = logging.getLogger("debcraft.cli.mirror")
+
+    def info(self, message: str, **kwargs: object) -> None:
+        self._log.info(message, extra={"extra_data": kwargs})
+
+    def debug(self, message: str, **kwargs: object) -> None:
+        self._log.debug(message, extra={"extra_data": kwargs})
+
+    def warning(self, message: str, **kwargs: object) -> None:
+        self._log.warning(message, extra={"extra_data": kwargs})
+
+    def error(self, message: str, **kwargs: object) -> None:
+        self._log.error(message, extra={"extra_data": kwargs})
+
+    def with_correlation_id(self, correlation_id: UUID) -> Logger:
+        return self
+
+
+@dataclass(frozen=True)
+class SyncContext:
+    """Infrastructure dependencies bundled for repository sync."""
+
+    download_coordinator: DownloadCoordinator
+    db_provider: _CliDatabaseProvider
+    storage_engine: MinimalStorageEngine
+    event_bus: _CliEventBus
+    cancellation_token: _CliCancellationToken
+    progress_reporter: _CliProgressReporter
+    logger: _CliLogger
+
+
+async def _sync_single_repository(
+    repo_config: RepositoryConfig,
+    ctx: SyncContext,
+    progress: Progress,
+    task_id: TaskID,
+) -> dict[str, int]:
+    """Sync a single repository and return result counts.
+
+    Args:
+        repo_config: Repository configuration object.
+        ctx: Infrastructure dependencies bundled as a SyncContext.
+        progress: Rich Progress instance for status updates.
+        task_id: Rich progress task ID.
+
+    Returns:
+        Dictionary with keys: downloaded, skipped, failed, bytes_transferred.
+    """
+    from uuid import uuid4
+
+    from debcraft.infrastructure.mirror.engine import MirrorEngine
+
+    session_id = str(uuid4())
+    progress.update(task_id, description=f"Syncing {repo_config.name}...")
+
+    engine = MirrorEngine(
+        download_coordinator=ctx.download_coordinator,
+        db_provider=ctx.db_provider,
+        storage_engine=ctx.storage_engine,
+        event_bus=ctx.event_bus,
+        cancellation_token=ctx.cancellation_token,
+        progress=ctx.progress_reporter,
+        logger=ctx.logger,
+    )
+
+    result = await engine.sync_repository(repo_config, session_id)
+    return {
+        "downloaded": result.files_downloaded,
+        "skipped": result.files_skipped,
+        "failed": result.files_failed,
+        "bytes_transferred": result.bytes_transferred,
+    }
 
 
 async def _run_sync(config: MirrorConfig, progress: Progress, task_id: TaskID) -> dict[str, int]:
@@ -201,69 +242,12 @@ async def _run_sync(config: MirrorConfig, progress: Progress, task_id: TaskID) -
     Returns:
         Dictionary with keys: downloaded, skipped, failed, bytes_transferred.
     """
-    from uuid import uuid4
-
     from debcraft.infrastructure.mirror.download import DownloadCoordinator
-    from debcraft.infrastructure.mirror.engine import MirrorEngine
 
-    storage_engine = _MinimalStorageEngine()
-
-    class _CliProgressReporter(ProgressReporter):
-        """Reports progress updates to the Rich progress bar."""
-
-        def report(self, percentage: float, message: str = "") -> None:
-            progress.update(task_id, completed=percentage, description=message)
-
-    class _CliCancellationToken(CancellationToken):
-        """Non-cancelling token for normal CLI operation."""
-
-        def __init__(self) -> None:
-            super().__init__()
-
-    class _CliEventBus(EventBus):
-        """No-op event bus for CLI context."""
-
-        def subscribe(self, event_type: type, handler: EventHandler) -> None:
-            pass
-
-        def unsubscribe(self, event_type: type, handler: EventHandler) -> None:
-            pass
-
-        async def publish(self, event: DomainEvent) -> None:
-            pass
-
-    class _CliLogger(Logger):
-        """Logger that delegates to Python's logging module.
-
-        When --verbose is active the root 'debcraft' logger has a
-        DEBUG-level handler, so messages propagate to stderr.  Without
-        --verbose the root logger is at WARNING by default and these
-        messages are silently discarded.
-        """
-
-        def __init__(self) -> None:
-            import logging
-
-            self._log = logging.getLogger("debcraft.cli.mirror")
-
-        def info(self, message: str, **kwargs: object) -> None:
-            self._log.info(message, extra={"extra_data": kwargs})
-
-        def debug(self, message: str, **kwargs: object) -> None:
-            self._log.debug(message, extra={"extra_data": kwargs})
-
-        def warning(self, message: str, **kwargs: object) -> None:
-            self._log.warning(message, extra={"extra_data": kwargs})
-
-        def error(self, message: str, **kwargs: object) -> None:
-            self._log.error(message, extra={"extra_data": kwargs})
-
-        def with_correlation_id(self, correlation_id: UUID) -> Logger:
-            return self
-
+    storage_engine = MinimalStorageEngine()
     event_bus = _CliEventBus()
     cancellation_token = _CliCancellationToken()
-    progress_reporter = _CliProgressReporter()
+    progress_reporter = _CliProgressReporter(progress, task_id)
     logger = _CliLogger()
     db_provider = _CliDatabaseProvider()
 
@@ -272,29 +256,31 @@ async def _run_sync(config: MirrorConfig, progress: Progress, task_id: TaskID) -
         config=config,
     )
 
+    ctx = SyncContext(
+        download_coordinator=download_coordinator,
+        db_provider=db_provider,
+        storage_engine=storage_engine,
+        event_bus=event_bus,
+        cancellation_token=cancellation_token,
+        progress_reporter=progress_reporter,
+        logger=logger,
+    )
+
     total_result = {"downloaded": 0, "skipped": 0, "failed": 0, "bytes_transferred": 0}
 
     await download_coordinator.start()
     try:
         for repo_config in config.repositories:
-            session_id = str(uuid4())
-            progress.update(task_id, description=f"Syncing {repo_config.name}...")
-
-            engine = MirrorEngine(
-                download_coordinator=download_coordinator,
-                db_provider=db_provider,
-                storage_engine=storage_engine,
-                event_bus=event_bus,
-                cancellation_token=cancellation_token,
-                progress=progress_reporter,
-                logger=logger,
+            result = await _sync_single_repository(
+                repo_config=repo_config,
+                ctx=ctx,
+                progress=progress,
+                task_id=task_id,
             )
-
-            result = await engine.sync_repository(repo_config, session_id)
-            total_result["downloaded"] += result.files_downloaded
-            total_result["skipped"] += result.files_skipped
-            total_result["failed"] += result.files_failed
-            total_result["bytes_transferred"] += result.bytes_transferred
+            total_result["downloaded"] += result["downloaded"]
+            total_result["skipped"] += result["skipped"]
+            total_result["failed"] += result["failed"]
+            total_result["bytes_transferred"] += result["bytes_transferred"]
     finally:
         await download_coordinator.close()
 
@@ -324,14 +310,7 @@ def sync() -> None:
 
     # Run sync with Rich progress bar (Req 10.6)
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
+        with create_progress_bar() as progress:
             task_id = progress.add_task("Starting sync...", total=100)
             result = asyncio.run(_run_sync(config, progress, task_id))
     except MirrorError as exc:
@@ -365,17 +344,13 @@ def sync() -> None:
     raise typer.Exit(code=0)
 
 
-@mirror_app.command()
-def verify() -> None:
-    """Verify checksums of all cached files in the mirror cache.
+def _query_verified_files() -> list[tuple[str, str]]:
+    """Query the mirror database for files to verify.
 
-    Computes SHA256 of each file tracked in mirror.db (VERIFIED or INDEXED
-    state) and compares against the stored checksum. Reports the number of
-    files checked, any mismatches with their paths, and a final pass/fail
-    status line.
+    Returns a list of (local_path, sha256) tuples for files in VERIFIED or
+    INDEXED state. Exits with code 1 if the database doesn't exist, or code 0
+    if no verified files are found.
     """
-    import hashlib
-
     from sqlalchemy import create_engine, select
     from sqlalchemy.orm import Session
 
@@ -388,17 +363,14 @@ def verify() -> None:
         console.print("[red]Error:[/red] Mirror database not found. No repositories have been synced.")
         raise typer.Exit(code=1)
 
-    # Connect to mirror.db using synchronous SQLAlchemy
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
-    # Query RepositoryFile entities in VERIFIED or INDEXED state with a local_path
     with Session(engine) as session:
         stmt = select(RepositoryFile).where(
             RepositoryFile.state.in_([RepositoryFileState.VERIFIED, RepositoryFileState.INDEXED]),
             RepositoryFile.local_path.isnot(None),
         )
         files = session.execute(stmt).scalars().all()
-        # Detach from session so we can close it before the long verification
         file_data = [(entry.local_path, entry.sha256) for entry in files if entry.local_path is not None]
 
     engine.dispose()
@@ -407,19 +379,24 @@ def verify() -> None:
         console.print("[yellow]No verified files found in mirror database.[/yellow]")
         raise typer.Exit(code=0)
 
-    # Verify each file's SHA256 against the stored checksum
-    mismatches: list[tuple[str, str, str]] = []  # (path, expected, actual_or_error)
+    return file_data
+
+
+def _verify_checksums(
+    file_data: list[tuple[str, str]],
+) -> tuple[int, list[str], list[tuple[str, str, str]]]:
+    """Verify SHA256 checksums of files against stored values.
+
+    Returns (checked_count, missing_paths, mismatches) where mismatches is a
+    list of (path, expected_hash, actual_or_error) tuples.
+    """
+    import hashlib
+
+    mismatches: list[tuple[str, str, str]] = []
     missing: list[str] = []
     checked = 0
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
+    with create_progress_bar() as progress:
         task = progress.add_task("Verifying checksums...", total=len(file_data))
 
         for local_path, expected_sha256 in file_data:
@@ -430,7 +407,6 @@ def verify() -> None:
                 progress.advance(task)
                 continue
 
-            # Compute SHA256 in 64 KiB chunks
             try:
                 sha256 = hashlib.sha256()
                 with open(file_path, "rb") as f:
@@ -449,7 +425,15 @@ def verify() -> None:
 
             progress.advance(task)
 
-    # Display results
+    return checked, missing, mismatches
+
+
+def _display_verification_results(
+    checked: int,
+    missing: list[str],
+    mismatches: list[tuple[str, str, str]],
+) -> None:
+    """Display verification results and exit with appropriate code."""
     console.print()
     console.print(f"Files checked: [bold]{checked}[/bold]")
     if missing:
@@ -471,6 +455,132 @@ def verify() -> None:
 
 
 @mirror_app.command()
+def verify() -> None:
+    """Verify checksums of all cached files in the mirror cache.
+
+    Computes SHA256 of each file tracked in mirror.db (VERIFIED or INDEXED
+    state) and compares against the stored checksum. Reports the number of
+    files checked, any mismatches with their paths, and a final pass/fail
+    status line.
+    """
+    file_data = _query_verified_files()
+    checked, missing, mismatches = _verify_checksums(file_data)
+    _display_verification_results(checked, missing, mismatches)
+
+
+def _gather_mirror_stats(db_path: Path) -> dict[str, int | str]:
+    """Query the mirror database for status statistics.
+
+    Reads cached file count, failed file count, total cache size, and
+    last sync timestamp from the mirror database.
+
+    Args:
+        db_path: Path to the mirror SQLite database file.
+
+    Returns:
+        Dictionary with keys: cached_files, failed_files,
+        cache_size_bytes (int), and last_sync (str).
+    """
+    stats: dict[str, int | str] = {
+        "cached_files": 0,
+        "failed_files": 0,
+        "cache_size_bytes": 0,
+        "last_sync": "never",
+    }
+
+    if not db_path.exists():
+        return stats
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    try:
+        with engine.connect() as conn:
+            # Check if repository_files table exists
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='repository_files'"))
+            has_repo_files = result.fetchone() is not None
+
+            # Check if sync_sessions table exists
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='sync_sessions'"))
+            has_sync_sessions = result.fetchone() is not None
+
+        if has_repo_files:
+            with Session(engine) as session:
+                from sqlalchemy import func, select
+
+                from debcraft.infrastructure.models.mirror import (
+                    RepositoryFile,
+                    RepositoryFileState,
+                )
+
+                # Count cached files (VERIFIED + INDEXED)
+                stats["cached_files"] = (
+                    session.execute(
+                        select(func.count(RepositoryFile.id)).where(  # pylint: disable=not-callable
+                            RepositoryFile.state.in_(
+                                [
+                                    RepositoryFileState.VERIFIED,
+                                    RepositoryFileState.INDEXED,
+                                ]
+                            )
+                        )
+                    ).scalar()
+                    or 0
+                )
+
+                # Count failed files
+                stats["failed_files"] = (
+                    session.execute(
+                        select(func.count(RepositoryFile.id)).where(  # pylint: disable=not-callable
+                            RepositoryFile.state == RepositoryFileState.FAILED
+                        )
+                    ).scalar()
+                    or 0
+                )
+
+                # Sum cache size of VERIFIED/INDEXED files
+                stats["cache_size_bytes"] = (
+                    session.execute(
+                        select(func.coalesce(func.sum(RepositoryFile.size_bytes), 0)).where(
+                            RepositoryFile.state.in_(
+                                [
+                                    RepositoryFileState.VERIFIED,
+                                    RepositoryFileState.INDEXED,
+                                ]
+                            )
+                        )
+                    ).scalar()
+                    or 0
+                )
+
+        if has_sync_sessions:
+            with Session(engine) as session:
+                from sqlalchemy import select
+
+                from debcraft.infrastructure.models.mirror import SyncSession
+
+                # Last sync timestamp (most recent completed_at)
+                last_completed = session.execute(
+                    select(SyncSession.completed_at)
+                    .where(SyncSession.completed_at.is_not(None))
+                    .order_by(SyncSession.completed_at.desc())
+                    .limit(1)
+                ).scalar()
+
+                if last_completed is not None:
+                    stats["last_sync"] = str(last_completed)
+
+        engine.dispose()
+    except (OSError, SQLAlchemyError):
+        # If database is corrupt or unreadable, show what we can
+        engine.dispose()
+
+    return stats
+
+
+@mirror_app.command()
 def status() -> None:
     """Display mirror status information."""
     config = _read_config()
@@ -479,111 +589,17 @@ def status() -> None:
     # Resolve mirror.db path via XDG
     db_path = resolve_xdg_path("database") / "mirror.db"
 
-    cached_files = 0
-    failed_files = 0
-    cache_size_bytes = 0
-    last_sync: str = "never"
-
-    if db_path.exists():
-        from sqlalchemy import create_engine, text
-        from sqlalchemy.orm import Session
-
-        engine = create_engine(f"sqlite:///{db_path}", echo=False)
-
-        try:
-            with engine.connect() as conn:
-                # Check if repository_files table exists
-                result = conn.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table' AND name='repository_files'")
-                )
-                has_repo_files = result.fetchone() is not None
-
-                # Check if sync_sessions table exists
-                result = conn.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table' AND name='sync_sessions'")
-                )
-                has_sync_sessions = result.fetchone() is not None
-
-            if has_repo_files:
-                with Session(engine) as session:
-                    from sqlalchemy import func, select
-
-                    from debcraft.infrastructure.models.mirror import (
-                        RepositoryFile,
-                        RepositoryFileState,
-                    )
-
-                    # Count cached files (VERIFIED + INDEXED)
-                    cached_files = (
-                        session.execute(
-                            select(func.count(RepositoryFile.id)).where(
-                                RepositoryFile.state.in_(
-                                    [
-                                        RepositoryFileState.VERIFIED,
-                                        RepositoryFileState.INDEXED,
-                                    ]
-                                )
-                            )
-                        ).scalar()
-                        or 0
-                    )
-
-                    # Count failed files
-                    failed_files = (
-                        session.execute(
-                            select(func.count(RepositoryFile.id)).where(
-                                RepositoryFile.state == RepositoryFileState.FAILED
-                            )
-                        ).scalar()
-                        or 0
-                    )
-
-                    # Sum cache size of VERIFIED/INDEXED files
-                    cache_size_bytes = (
-                        session.execute(
-                            select(func.coalesce(func.sum(RepositoryFile.size_bytes), 0)).where(
-                                RepositoryFile.state.in_(
-                                    [
-                                        RepositoryFileState.VERIFIED,
-                                        RepositoryFileState.INDEXED,
-                                    ]
-                                )
-                            )
-                        ).scalar()
-                        or 0
-                    )
-
-            if has_sync_sessions:
-                with Session(engine) as session:
-                    from sqlalchemy import select
-
-                    from debcraft.infrastructure.models.mirror import SyncSession
-
-                    # Last sync timestamp (most recent completed_at)
-                    last_completed = session.execute(
-                        select(SyncSession.completed_at)
-                        .where(SyncSession.completed_at.is_not(None))
-                        .order_by(SyncSession.completed_at.desc())
-                        .limit(1)
-                    ).scalar()
-
-                    if last_completed is not None:
-                        last_sync = str(last_completed)
-
-            engine.dispose()
-        except Exception:
-            # If database is corrupt or unreadable, show what we can
-            engine.dispose()
+    stats = _gather_mirror_stats(db_path)
 
     table = Table(title="Mirror Status")
     table.add_column("Metric", style="bold")
     table.add_column("Value")
 
     table.add_row("Configured repositories", str(repo_count))
-    table.add_row("Last sync", last_sync)
-    table.add_row("Cached files", str(cached_files))
-    table.add_row("Failed files", str(failed_files))
-    table.add_row("Cache size", _format_bytes(cache_size_bytes))
+    table.add_row("Last sync", str(stats["last_sync"]))
+    table.add_row("Cached files", str(stats["cached_files"]))
+    table.add_row("Failed files", str(stats["failed_files"]))
+    table.add_row("Cache size", format_bytes(int(stats["cache_size_bytes"])))
 
     console.print(table)
     raise typer.Exit(code=0)
@@ -646,7 +662,7 @@ async def _clean_async(*, yes: bool) -> None:
         raise typer.Exit(code=1)
 
     # Step 3: Scan the mirror cache directory for all files
-    storage = _MinimalStorageEngine()
+    storage = MinimalStorageEngine()
     mirror_dir = storage.get_path("mirror")
     all_files = _scan_mirror_cache(mirror_dir)
 
@@ -664,7 +680,7 @@ async def _clean_async(*, yes: bool) -> None:
     # Step 7: Display summary (count and total size)
     total_size = sum(_safe_file_size(f) for f in unreferenced)
     console.print(
-        f"Found [bold]{len(unreferenced)}[/bold] unreferenced file(s) totaling [bold]{_format_bytes(total_size)}[/bold]"
+        f"Found [bold]{len(unreferenced)}[/bold] unreferenced file(s) totaling [bold]{format_bytes(total_size)}[/bold]"
     )
 
     # Step 8: Prompt for confirmation (unless --yes flag)
@@ -678,7 +694,7 @@ async def _clean_async(*, yes: bool) -> None:
     reclaimed = _remove_files_with_progress(unreferenced)
 
     # Step 10: Display reclaimed space and exit 0
-    console.print(f"[green]Removed {len(unreferenced)} file(s), reclaimed {_format_bytes(reclaimed)}[/green]")
+    console.print(f"[green]Removed {len(unreferenced)} file(s), reclaimed {format_bytes(reclaimed)}[/green]")
     raise typer.Exit(code=0)
 
 
@@ -767,14 +783,7 @@ def _remove_files_with_progress(files: list[Path]) -> int:
     """
     reclaimed = 0
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
+    with create_progress_bar() as progress:
         task_id = progress.add_task("Cleaning cache...", total=len(files))
 
         for file_path in files:

@@ -61,7 +61,7 @@ def _format_field_value(value: str) -> str:
     result_parts = [parts[0]]
 
     for part in parts[1:]:
-        if part == "" or part == ".":
+        if part in ("", "."):
             # Empty lines in multiline values become " ."
             result_parts.append(" .")
         else:

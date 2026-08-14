@@ -88,7 +88,7 @@ async def test_enrich_cache_miss_returns_none_enrichment() -> None:
     assert enriched[0].enrichment is None
     assert len(diagnostics) == 1
     assert "unknown-pkg" in diagnostics[0]
-    assert "metadata lookup not yet implemented" in diagnostics[0]
+    assert "no matching PackageInstance in metadata.db" in diagnostics[0]
 
 
 @pytest.mark.asyncio
@@ -184,7 +184,7 @@ async def test_enrich_cache_miss_different_snapshot() -> None:
 
     assert enriched[0].enrichment is None
     assert len(diagnostics) == 1
-    assert "metadata lookup not yet implemented" in diagnostics[0]
+    assert "no matching PackageInstance in metadata.db" in diagnostics[0]
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.values import ArtifactType
@@ -83,8 +83,8 @@ def st_scanner_registrations(
 # ---------------------------------------------------------------------------
 
 
-def _make_scanner_class(priority: int) -> type:
-    """Create a fake scanner class with the given priority and async scan method."""
+def _make_scanner_instance(priority: int) -> object:
+    """Create a fake scanner instance with the given priority and async scan method."""
 
     class FakeScanner:
         priority = 0  # Will be overridden below
@@ -94,14 +94,14 @@ def _make_scanner_class(priority: int) -> type:
             ...
 
     FakeScanner.priority = priority
-    return FakeScanner
+    return FakeScanner()
 
 
-def _make_entry_point(name: str, scanner_class: type) -> MagicMock:
-    """Create a mock entry point that returns the given scanner class on load."""
+def _make_entry_point(name: str, scanner_instance: object) -> MagicMock:
+    """Create a mock entry point that returns the given scanner instance on load."""
     ep = MagicMock()
     ep.name = name
-    ep.load.return_value = scanner_class
+    ep.load.return_value = scanner_instance
     return ep
 
 
@@ -137,7 +137,6 @@ class TestProperty11RegistryPrioritySelection:
     lexicographically first entry point name wins.
     """
 
-    @settings(max_examples=100)
     @given(registrations=st_scanner_registrations())
     def test_highest_priority_wins(
         self,
@@ -152,7 +151,7 @@ class TestProperty11RegistryPrioritySelection:
         """
         # Build mock entry points — all use the same artifact type name
         # so they compete for the same slot
-        scanner_classes: dict[str, type] = {}
+        scanner_instances: dict[str, object] = {}
         entry_points = []
 
         for priority, label in registrations:
@@ -160,33 +159,19 @@ class TestProperty11RegistryPrioritySelection:
             # but we need them to be distinguishable. Since the registry
             # maps ep.name to ArtifactType, we use a workaround:
             # load all scanners under the same ep.name sequentially.
-            scanner_cls = _make_scanner_class(priority)
-            scanner_classes[label] = scanner_cls
+            scanner_inst = _make_scanner_instance(priority)
+            scanner_instances[label] = scanner_inst
 
         # Since the registry maps ep.name -> ArtifactType, all competing
         # scanners must have the same ep.name. We create entry points
-        # with name=_ARTIFACT_TYPE_NAME but different underlying classes.
-        # However, the tiebreaker uses ep.name for lexicographic ordering.
-        # To properly test tiebreaking, we need different ep.names that
-        # all map to the same ArtifactType. Since ArtifactType uses the
-        # ep.name directly, we must use the same name. But the registry
-        # code uses `ep.name` for the lexicographic comparison.
+        # with name=_ARTIFACT_TYPE_NAME but different underlying instances.
+        # The tiebreaker uses ep.name for lexicographic ordering.
         #
-        # Looking at the implementation: the tiebreaker compares ep.name
-        # values, but since all must map to the same ArtifactType(ep.name),
-        # they all have the same ep.name = "directory". This means the
-        # tiebreaker on ep.name only matters when multiple entry points
-        # have the SAME name (which they do here). In that case, only
-        # priority matters. Let's test both scenarios properly.
-        #
-        # Actually, re-reading the registry code more carefully:
-        # The _load_entry_point stores (priority, ep.name) in _priorities.
         # Since all ep.names are identical ("directory"), the lexicographic
         # tiebreak would always be equal. The real scenario is:
         # entry points with the same name but loaded in sequence.
-        # The last one loaded with >= priority wins based on the code logic.
         #
-        # Let me re-read the actual priority logic:
+        # Priority logic:
         # if priority < existing_priority: return (skip)
         # if priority == existing_priority and ep.name >= existing_name: return (skip)
         # Otherwise: register (replace existing)
@@ -195,24 +180,16 @@ class TestProperty11RegistryPrioritySelection:
         # ep.name >= existing_name → "directory" >= "directory" → True → skip
         # So the FIRST registered scanner wins on equal priority (since
         # subsequent ones with same priority are skipped).
-        #
-        # For the tiebreaking test, we need entry points with DIFFERENT names
-        # that still map to the same ArtifactType. This isn't possible with
-        # the current ArtifactType enum design.
-        #
-        # The correct test: entry points all named "directory", the one with
-        # highest priority wins. On equal priority, the first one loaded wins
-        # (because all have the same ep.name).
 
         entry_points = []
         for _priority, label in registrations:
-            scanner_cls = scanner_classes[label]
-            ep = _make_entry_point(_ARTIFACT_TYPE_NAME, scanner_cls)
+            scanner_inst = scanner_instances[label]
+            ep = _make_entry_point(_ARTIFACT_TYPE_NAME, scanner_inst)
             entry_points.append(ep)
 
         # Expected winner: highest priority, first occurrence for ties
         expected_priority, expected_label = _determine_expected_winner_order_aware(registrations)
-        expected_class = scanner_classes[expected_label]
+        expected_instance = scanner_instances[expected_label]
 
         # Mock entry_points() to return our fake entry points
         with patch(
@@ -224,13 +201,12 @@ class TestProperty11RegistryPrioritySelection:
 
         # The selected scanner must be the expected winner
         selected = registry.get_scanner(ArtifactType.DIRECTORY)
-        assert selected is expected_class, (
+        assert selected is expected_instance, (
             f"Expected scanner with priority {expected_priority} "
             f"(label={expected_label}) to win, but got a different scanner. "
             f"Registrations: {registrations}"
         )
 
-    @settings(max_examples=100)
     @given(
         priority=_priority_strategy,
         labels=st.lists(
@@ -258,19 +234,19 @@ class TestProperty11RegistryPrioritySelection:
         because subsequent scanners with equal priority and equal ep.name
         are skipped (ep.name >= existing_name is True).
         """
-        scanner_classes: dict[str, type] = {}
+        scanner_instances: dict[str, object] = {}
         entry_points = []
 
         for label in labels:
-            scanner_cls = _make_scanner_class(priority)
-            scanner_classes[label] = scanner_cls
-            ep = _make_entry_point(_ARTIFACT_TYPE_NAME, scanner_cls)
+            scanner_inst = _make_scanner_instance(priority)
+            scanner_instances[label] = scanner_inst
+            ep = _make_entry_point(_ARTIFACT_TYPE_NAME, scanner_inst)
             entry_points.append(ep)
 
         # Expected winner: first one loaded (since all have same priority
         # and same ep.name, subsequent ones are skipped)
         expected_label = labels[0]
-        expected_class = scanner_classes[expected_label]
+        expected_instance = scanner_instances[expected_label]
 
         with patch(
             "debcraft.infrastructure.scanners.registry.importlib.metadata.entry_points",
@@ -280,7 +256,7 @@ class TestProperty11RegistryPrioritySelection:
             registry.load_from_entry_points()
 
         selected = registry.get_scanner(ArtifactType.DIRECTORY)
-        assert selected is expected_class, (
+        assert selected is expected_instance, (
             f"Expected first loaded scanner (label={expected_label}) "
             f"to win on equal priority={priority}, but got different scanner. "
             f"Labels in order: {labels}"

@@ -163,7 +163,6 @@ class TestProperty18RepositoryIsolationOnFailure:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -260,7 +259,6 @@ class TestProperty18RepositoryIsolationOnFailure:
         assert set(called_repos) == {r.name for r in repos}
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -345,7 +343,6 @@ class TestProperty19CancellationStateRollbackRules:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -518,7 +515,6 @@ class TestProperty19CancellationStateRollbackRules:
             await engine_db.dispose()
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -579,7 +575,6 @@ class TestProperty19CancellationStateRollbackRules:
             await engine_db.dispose()
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )

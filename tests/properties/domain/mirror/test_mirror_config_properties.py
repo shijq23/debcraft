@@ -18,7 +18,7 @@ are non-empty strings within their count limits, and download_timeout is
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.config import (
@@ -145,7 +145,6 @@ class TestProperty16InvalidConfigRejection:
     the validation function SHALL return one or more error messages.
     """
 
-    @settings(max_examples=200)
     @given(name=_invalid_name_empty())
     def test_empty_name_rejected(self, name: str) -> None:
         """Empty repository name is always rejected."""
@@ -159,7 +158,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty name should produce validation errors"
 
-    @settings(max_examples=200)
     @given(name=_invalid_name_too_long())
     def test_name_exceeding_128_chars_rejected(self, name: str) -> None:
         """Names longer than 128 characters are always rejected."""
@@ -173,7 +171,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, f"Name of length {len(name)} should be rejected"
 
-    @settings(max_examples=200)
     @given(url=_invalid_url_bad_scheme())
     def test_invalid_url_scheme_rejected(self, url: str) -> None:
         """URLs with schemes other than http/https are rejected."""
@@ -187,7 +184,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, f"URL '{url}' with invalid scheme should be rejected"
 
-    @settings(max_examples=200)
     @given(url=_invalid_url_no_host())
     def test_url_without_host_rejected(self, url: str) -> None:
         """URLs without a valid host are rejected."""
@@ -201,7 +197,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, f"URL '{url}' without host should be rejected"
 
-    @settings(max_examples=200)
     @given(
         count=st.integers(min_value=21, max_value=30),
     )
@@ -217,7 +212,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, f"Suites list of {count} should be rejected"
 
-    @settings(max_examples=200)
     @given(
         count=st.integers(min_value=51, max_value=70),
     )
@@ -233,7 +227,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, f"Components list of {count} should be rejected"
 
-    @settings(max_examples=200)
     @given(
         count=st.integers(min_value=21, max_value=30),
     )
@@ -249,7 +242,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, f"Architectures list of {count} should be rejected"
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_empty_suites_list_rejected(self, data: st.DataObject) -> None:
         """Empty suites list is always rejected."""
@@ -263,7 +255,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty suites list should be rejected"
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_empty_components_list_rejected(self, data: st.DataObject) -> None:
         """Empty components list is always rejected."""
@@ -277,7 +268,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty components list should be rejected"
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_empty_architectures_list_rejected(self, data: st.DataObject) -> None:
         """Empty architectures list is always rejected."""
@@ -291,7 +281,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty architectures list should be rejected"
 
-    @settings(max_examples=200)
     @given(
         valid_items=_valid_string_list(1, 19),
         insert_pos=st.integers(min_value=0, max_value=19),
@@ -310,7 +299,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty string in suites should be rejected"
 
-    @settings(max_examples=200)
     @given(
         valid_items=_valid_string_list(1, 49),
         insert_pos=st.integers(min_value=0, max_value=49),
@@ -329,7 +317,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty string in components should be rejected"
 
-    @settings(max_examples=200)
     @given(
         valid_items=_valid_string_list(1, 19),
         insert_pos=st.integers(min_value=0, max_value=19),
@@ -348,7 +335,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_repository_config(config)
         assert len(errors) > 0, "Empty string in architectures should be rejected"
 
-    @settings(max_examples=200)
     @given(timeout=_invalid_timeout_too_low())
     def test_timeout_below_minimum_rejected(self, timeout: int) -> None:
         """Download timeout below 30 seconds is rejected."""
@@ -356,7 +342,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_mirror_config(config)
         assert len(errors) > 0, f"Timeout {timeout} below 30 should be rejected"
 
-    @settings(max_examples=200)
     @given(timeout=_invalid_timeout_too_high())
     def test_timeout_above_maximum_rejected(self, timeout: int) -> None:
         """Download timeout above 3600 seconds is rejected."""
@@ -364,7 +349,6 @@ class TestProperty16InvalidConfigRejection:
         errors = validate_mirror_config(config)
         assert len(errors) > 0, f"Timeout {timeout} above 3600 should be rejected"
 
-    @settings(max_examples=200)
     @given(
         name=_valid_name(),
         timeout=_valid_timeout(),
@@ -404,14 +388,12 @@ class TestProperty17ValidConfigAccepted:
     30-3600, the validation function SHALL return zero errors.
     """
 
-    @settings(max_examples=200)
     @given(config=_valid_repository_config())
     def test_valid_repository_config_produces_no_errors(self, config: RepositoryConfig) -> None:
         """Any valid RepositoryConfig passes validation with no errors."""
         errors = validate_repository_config(config)
         assert errors == [], f"Valid config should produce no errors, got: {errors}"
 
-    @settings(max_examples=200)
     @given(
         repos=st.lists(
             _valid_repository_config(),
@@ -445,7 +427,6 @@ class TestProperty17ValidConfigAccepted:
         errors = validate_mirror_config(config)
         assert errors == [], f"Valid MirrorConfig should produce no errors, got: {errors}"
 
-    @settings(max_examples=200)
     @given(timeout=_valid_timeout())
     def test_valid_timeout_accepted(self, timeout: int) -> None:
         """Any timeout in [30, 3600] is accepted."""
@@ -453,7 +434,6 @@ class TestProperty17ValidConfigAccepted:
         errors = validate_mirror_config(config)
         assert errors == [], f"Timeout {timeout} should be valid, got: {errors}"
 
-    @settings(max_examples=200)
     @given(
         name=_valid_name(),
         url=_valid_url(),

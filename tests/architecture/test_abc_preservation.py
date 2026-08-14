@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "debcraft"
@@ -144,7 +144,6 @@ class TestPreservationKernelABCs:
     This behavior must be preserved after the fix.
     """
 
-    @settings(max_examples=10)
     @given(abc_name=st.sampled_from(_KERNEL_IMPLEMENTED_ABCS))
     def test_kernel_abcs_have_implementations_detected(self, abc_name: str) -> None:
         """Kernel-implemented ABCs are correctly found by current test logic.
@@ -187,7 +186,6 @@ class TestPreservationUserFacingExclusion:
     user/plugin extension (like Workflow) are not checked for kernel implementations.
     """
 
-    @settings(max_examples=5)
     @given(abc_name=st.sampled_from(sorted(_USER_FACING_ABCS)))
     def test_user_facing_abcs_are_excluded(self, abc_name: str) -> None:
         """User-facing ABCs are excluded from implementation checks.
@@ -238,7 +236,6 @@ class TestPreservationMissingDetection:
     catches genuinely unimplemented contracts.
     """
 
-    @settings(max_examples=10)
     @given(
         abc_name=st.text(
             alphabet=st.characters(whitelist_categories=("Lu", "Ll")),
@@ -360,7 +357,6 @@ class TestPreservationExclusionMechanism:
 
         assert isinstance(TestABCImplementationMapping._USER_FACING_ABCS, frozenset)
 
-    @settings(max_examples=5)
     @given(
         abc_name=st.text(
             alphabet=st.characters(whitelist_categories=("Lu", "Ll")),

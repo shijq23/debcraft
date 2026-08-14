@@ -13,8 +13,8 @@ import time
 from typing import TYPE_CHECKING
 
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
-from debcraft.domain.scanner.filesystem_analyzer import analyze_filesystem
-from debcraft.domain.scanner.values import IdentifiedPackage, ScanningStrategy, ScanResult
+from debcraft.domain.scanner.values import ScanningStrategy, ScanResult
+from debcraft.infrastructure.scanners._mixin import ScannerMixin
 
 if TYPE_CHECKING:
     from debcraft.domain.scanner.ports import ContentsIndexPort, PackageLookupPort
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from debcraft.platform.contracts.workflow import WorkflowContext
 
 
-class DirectoryScanner:
+class DirectoryScanner(ScannerMixin):
     """Scans local directories for installed Debian packages.
 
     Looks for /var/lib/dpkg/status within the directory root.
@@ -71,7 +71,7 @@ class DirectoryScanner:
             duration = time.perf_counter() - start_time
             reason = "path does not exist" if not os.path.exists(root) else "path is not a directory"
             diagnostics.append(f"Directory not accessible at '{root}': {reason}")
-            context.progress.report(100.0, "Scan complete: directory not accessible")
+            self._report_progress(context, 100.0, "Scan complete: directory not accessible")
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
@@ -103,35 +103,22 @@ class DirectoryScanner:
             diagnostics.extend(parse_result.diagnostics)
 
             # Step 5: Check cancellation between package entries
-            packages: list[IdentifiedPackage] = []
-            for pkg in parse_result.packages:
-                if context.cancellation_token.is_cancelled:
-                    duration = time.perf_counter() - start_time
-                    diagnostics.append(
-                        f"Scan cancelled after processing {len(packages)} of {len(parse_result.packages)} packages"
-                    )
-                    return ScanResult(
-                        packages=packages,
-                        strategy=ScanningStrategy.DPKG_METADATA.value,
-                        diagnostics=diagnostics,
-                        duration_seconds=duration,
-                        artifact_path=root,
-                    )
-                packages.append(pkg)
+            result = self._iterate_packages_with_cancellation(
+                parse_result.packages,
+                context,
+                start_time,
+                ScanningStrategy.DPKG_METADATA.value,
+                artifact_path=root,
+                diagnostics=diagnostics,
+            )
 
             # Step 6: Report 100% progress
-            duration = time.perf_counter() - start_time
-            context.progress.report(
+            self._report_progress(
+                context,
                 100.0,
-                f"Scan complete: identified {len(packages)} packages",
+                f"Scan complete: identified {len(result.packages)} packages",
             )
-            return ScanResult(
-                packages=packages,
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=root,
-            )
+            return result
 
         # Step 4 (Req 4.3): dpkg status file not found — fall back
         return await self._fallback_filesystem_analysis(artifact, context, root, start_time, diagnostics)
@@ -173,52 +160,18 @@ class DirectoryScanner:
                 # Normalize to forward-slash paths starting with /
                 file_paths.append("/" + rel_path.replace(os.sep, "/"))
 
-        if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled during filesystem traversal")
-            context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.FILESYSTEM_ANALYSIS.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=root,
-            )
-
-        # Get snapshot_id from artifact options
-        snapshot_id = int(artifact.options.get("snapshot_id", "0"))
-
-        # Run filesystem analysis
-        result = await analyze_filesystem(
+        # Run filesystem analysis with pre-cancellation check and cancellation iteration
+        return await self._analyze_and_build_filesystem_result(
             file_paths=file_paths,
             contents_port=self._contents_port,
             package_port=self._package_port,
-            snapshot_id=snapshot_id,
-        )
-
-        diagnostics.extend(result.diagnostics)
-
-        # Check cancellation for the resulting packages
-        packages = []
-        for pkg in result.packages:
-            if context.cancellation_token.is_cancelled:
-                diagnostics.append(
-                    f"Scan cancelled after processing {len(packages)} of {len(result.packages)} packages"
-                )
-                break
-            packages.append(pkg)
-
-        duration = time.perf_counter() - start_time
-        context.progress.report(
-            100.0,
-            f"Scan complete: identified {len(packages)} packages via filesystem analysis",
-        )
-        return ScanResult(
-            packages=packages,
-            strategy=ScanningStrategy.FILESYSTEM_ANALYSIS.value,
-            diagnostics=diagnostics,
-            duration_seconds=duration,
+            artifact=artifact,
+            context=context,
+            start_time=start_time,
             artifact_path=root,
+            diagnostics=diagnostics,
+            use_cancellation_iteration=True,
+            pre_cancellation_step="filesystem traversal",
         )
 
     def _is_safe_path(self, root: str, target: str) -> bool:

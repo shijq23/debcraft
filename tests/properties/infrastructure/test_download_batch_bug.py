@@ -40,8 +40,8 @@ _num_success_tasks = st.integers(min_value=1, max_value=4)
 # Number of tasks that will trigger 4xx (at least 1)
 _num_failing_tasks = st.integers(min_value=1, max_value=3)
 
-# HTTP 4xx status codes
-_http_4xx_status = st.integers(min_value=400, max_value=499)
+# HTTP 4xx status codes (client errors, non-retriable)
+_http_4xx_status = st.integers(min_value=400, max_value=499).filter(lambda x: x != 429)
 
 # Random content for successful downloads
 _content_strategy = st.binary(min_size=1, max_size=512)
@@ -101,7 +101,6 @@ class TestDownloadBatchBugExploration:
     """
 
     @settings(
-        max_examples=20,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -223,9 +222,9 @@ async def _noop_sleep(delay: float) -> None:
 # Regression Test: Multiple 4xx failures produce independent failed results
 # ---------------------------------------------------------------------------
 
-# Strategy for a list of distinct 4xx codes (2-4 codes)
+# Strategy for a list of distinct 4xx codes (2-4 codes, excluding 429)
 _multi_4xx_codes = st.lists(
-    st.integers(min_value=400, max_value=499),
+    st.integers(min_value=400, max_value=499).filter(lambda x: x != 429),
     min_size=2,
     max_size=4,
 )
@@ -245,7 +244,6 @@ class TestBatchMultiple4xxFailures:
     """
 
     @settings(
-        max_examples=20,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -361,7 +359,6 @@ class TestDirectDownloadFileStillRaises:
     """
 
     @settings(
-        max_examples=20,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -429,7 +426,6 @@ class TestBatch5xxRetriesBeforeFailing:
     """
 
     @settings(
-        max_examples=20,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )

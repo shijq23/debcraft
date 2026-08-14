@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.errors import SPDXParseError, SPDXTokenizeError
@@ -161,7 +161,6 @@ class TestProperty3SPDXExpressionRoundTrip:
     **Validates: Requirements 4.1, 4.2, 4.4, 4.6, 5.1, 5.2, 5.3, 5.4, 5.6, 6.1, 6.2, 6.3, 6.4, 6.5**
     """
 
-    @settings(max_examples=100)
     @given(node=spdx_node_strategy())
     def test_spdx_round_trip(self, node: SPDXNode) -> None:
         """Print → tokenize → parse produces structurally identical AST."""
@@ -389,7 +388,6 @@ class TestProperty5SPDXParserRejectsMalformedInput:
     **Validates: Requirements 5.5**
     """
 
-    @settings(max_examples=200)
     @given(tokens=malformed_token_sequences())
     def test_spdx_parser_rejects_malformed_input(self, tokens: list[SPDXToken]) -> None:
         """Parser raises SPDXParseError with valid token position for malformed input."""
@@ -474,7 +472,6 @@ class TestProperty4SPDXTokenizerErrorOffsetAccuracy:
     **Validates: Requirements 4.3**
     """
 
-    @settings(max_examples=100)
     @given(expression=strings_with_invalid_spdx_chars())
     def test_spdx_tokenizer_error_offset_accuracy(self, expression: str) -> None:
         """Error offset points to a character that is invalid in SPDX."""

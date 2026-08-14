@@ -12,6 +12,7 @@ import time
 from typing import TYPE_CHECKING
 
 from debcraft.domain.scanner.values import ScanningStrategy, ScanResult
+from debcraft.infrastructure.scanners._mixin import ScannerMixin
 from debcraft.infrastructure.scanners.qcow2 import QCOW2_MAGIC
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from debcraft.platform.contracts.workflow import WorkflowContext
 
 
-class AMIScanner:
+class AMIScanner(ScannerMixin):
     """Scans AMI disk images by detecting format and delegating.
 
     Detects QCOW2 vs raw format via magic bytes at offset 0, then
@@ -65,68 +66,60 @@ class AMIScanner:
 
         # Step 1: Check cancellation before format detection (Req 10.7)
         if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled before format detection")
             context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
+            return self._build_cancellation_result(
+                step="before format detection",
+                start_time=start_time,
                 strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
                 artifact_path=path,
+                diagnostics=diagnostics,
             )
 
         # Step 2: Read first 4 bytes for format detection (Req 10.1, 10.5)
-        context.progress.report(5.0, "Detecting AMI image format")
+        self._report_progress(context, 5.0, "Detecting AMI image format")
         try:
             with open(path, "rb") as f:
                 header = f.read(4)
         except (OSError, PermissionError) as e:
-            duration = time.perf_counter() - start_time
             diagnostics.append(f"Cannot read AMI image at '{path}': {e}")
-            context.progress.report(100.0, "Scan complete: file not readable")
-            return ScanResult(
-                packages=[],
+            self._report_progress(context, 100.0, "Scan complete: file not readable")
+            return self._build_empty_result(
                 strategy=ScanningStrategy.DPKG_METADATA.value,
                 diagnostics=diagnostics,
-                duration_seconds=duration,
+                start_time=start_time,
                 artifact_path=path,
             )
 
         # Req 10.5: File too small for format detection
         if len(header) < 4:
-            duration = time.perf_counter() - start_time
             diagnostics.append(
                 f"AMI image at '{path}' is too small for format detection: expected at least 4 bytes, got {len(header)}"
             )
-            context.progress.report(100.0, "Scan complete: file too small")
-            return ScanResult(
-                packages=[],
+            self._report_progress(context, 100.0, "Scan complete: file too small")
+            return self._build_empty_result(
                 strategy=ScanningStrategy.DPKG_METADATA.value,
                 diagnostics=diagnostics,
-                duration_seconds=duration,
+                start_time=start_time,
                 artifact_path=path,
             )
 
         # Check cancellation before delegating (Req 10.7)
         if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled before delegating to sub-scanner")
             context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
+            return self._build_cancellation_result(
+                step="before delegating to sub-scanner",
+                start_time=start_time,
                 strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
                 artifact_path=path,
+                diagnostics=diagnostics,
             )
 
         # Step 3/4: Delegate based on magic bytes (Req 10.2, 10.3)
         if header == QCOW2_MAGIC:
             # QCOW2 format detected
-            context.progress.report(10.0, "QCOW2 format detected, delegating")
+            self._report_progress(context, 10.0, "QCOW2 format detected, delegating")
             return await self._qcow2_scanner.scan(artifact, context)
 
         # Raw format (not QCOW2)
-        context.progress.report(10.0, "Raw format detected, delegating to IMG scanner")
+        self._report_progress(context, 10.0, "Raw format detected, delegating to IMG scanner")
         return await self._img_scanner.scan(artifact, context)

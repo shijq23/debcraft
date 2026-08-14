@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.dep5_parser import DEP5Parser
@@ -181,7 +181,6 @@ class TestProperty1DEP5ParsePrintRoundTrip:
     **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.7, 3.1, 3.2, 3.3, 3.4**
     """
 
-    @settings(max_examples=100)
     @given(doc=dep5_document_strategy())
     def test_dep5_round_trip(self, doc: DEP5Document) -> None:
         """Print → parse produces structurally equal document."""
@@ -213,7 +212,6 @@ class TestProperty2DEP5PrinterTrailingNewline:
     **Validates: Requirements 3.5**
     """
 
-    @settings(max_examples=100)
     @given(doc=dep5_document_strategy())
     def test_dep5_printer_trailing_newline(self, doc: DEP5Document) -> None:
         """Output ends with exactly one newline, not two or more."""

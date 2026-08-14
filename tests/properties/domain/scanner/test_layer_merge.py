@@ -12,7 +12,7 @@ Property 7: Layer Merge with Whiteouts
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.scanners.docker import DockerScanner
@@ -110,7 +110,6 @@ class TestProperty7LayerMergeWhiteouts:
     OCI/Docker whiteout semantics.
     """
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_regular_whiteout_removes_target_file(self, data: st.DataObject) -> None:
         """After applying .wh.X, file X is NOT in the merged vfs.
@@ -146,7 +145,6 @@ class TestProperty7LayerMergeWhiteouts:
             f"File '{target_path}' should have been removed by whiteout '{whiteout_entry}' but is still present in vfs"
         )
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_opaque_whiteout_clears_directory_from_lower_layers(self, data: st.DataObject) -> None:
         """After applying .wh..wh..opq in a directory, ALL files from lower layers are removed.
@@ -190,7 +188,6 @@ class TestProperty7LayerMergeWhiteouts:
                 f"File '{path}' outside the opaque whiteout directory should be preserved but was removed"
             )
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_non_targeted_files_preserved(self, data: st.DataObject) -> None:
         """Files NOT targeted by whiteouts remain in the vfs.
@@ -229,7 +226,6 @@ class TestProperty7LayerMergeWhiteouts:
             assert path in vfs, f"Non-targeted file '{path}' should be preserved but was removed"
             assert vfs[path] == content, f"Non-targeted file '{path}' content was modified"
 
-    @settings(max_examples=200)
     @given(data=st.data())
     def test_same_layer_files_survive_opaque_whiteout(self, data: st.DataObject) -> None:
         """Files added in the same layer as an opaque whiteout ARE preserved.

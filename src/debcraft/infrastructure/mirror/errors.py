@@ -7,7 +7,23 @@ The original cause is preserved via __cause__ for debugging.
 
 from __future__ import annotations
 
+from debcraft.domain.mirror.errors import ReleaseParseError
 from debcraft.platform.kernel.errors import PlatformError
+
+__all__ = [
+    "ChecksumMismatchError",
+    "DiskSpaceError",
+    "DownloadError",
+    "HttpClientError",
+    "HttpRateLimitError",
+    "HttpServerError",
+    "MirrorConfigurationError",
+    "MirrorError",
+    "NetworkError",
+    "RateLimitTimeoutError",
+    "ReleaseParseError",
+    "SizeMismatchError",
+]
 
 
 class MirrorError(PlatformError):
@@ -53,9 +69,6 @@ class MirrorConfigurationError(MirrorError):
         if line_number is not None:
             message = f"{message} (line {line_number})"
         super().__init__(message, cause)
-
-
-from debcraft.domain.mirror.errors import ReleaseParseError as ReleaseParseError  # noqa: E402
 
 
 class DownloadError(MirrorError):
@@ -235,7 +248,7 @@ class SizeMismatchError(DownloadError):
 
 
 class HttpRateLimitError(DownloadError):
-    """Raised when an HTTP 403 response indicates CDN rate limiting.
+    """Raised when an HTTP 429 response indicates rate limiting.
 
     Rate-limit errors are retriable with extended backoff.
     """
@@ -243,7 +256,7 @@ class HttpRateLimitError(DownloadError):
     def __init__(
         self,
         url: str,
-        status_code: int = 403,
+        status_code: int = 429,
         retry_count: int = 0,
         cause: Exception | None = None,
     ) -> None:
@@ -251,7 +264,7 @@ class HttpRateLimitError(DownloadError):
 
         Args:
             url: The URL that returned a rate-limit response.
-            status_code: The HTTP status code received (typically 403).
+            status_code: The HTTP status code received (typically 429).
             retry_count: Number of retry attempts made before this error.
             cause: The underlying exception that triggered this error, if any.
         """

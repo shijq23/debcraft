@@ -19,7 +19,7 @@ and the parser SHALL not raise an exception.
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.indexer.sources_parser import SourcesParser
@@ -185,7 +185,6 @@ class TestProperty4SourcePackageMetadataRoundTrip:
     **Validates: Requirements 2.1, 2.4**
     """
 
-    @settings(max_examples=200)
     @given(metadata=_source_package_metadata())
     def test_round_trip_produces_equivalent_object(self, metadata: SourcePackageMetadata) -> None:
         """Format then parse produces equivalent SourcePackageMetadata."""
@@ -226,7 +225,6 @@ class TestProperty4SourcePackageMetadataRoundTrip:
             f"Binary packages mismatch: expected {metadata.binary_packages}, got {parsed.binary_packages}"
         )
 
-    @settings(max_examples=200)
     @given(metadata=_source_package_metadata())
     def test_round_trip_full_equality(self, metadata: SourcePackageMetadata) -> None:
         """Format then parse produces object equal to the original."""
@@ -257,7 +255,6 @@ class TestProperty5InvalidSourcesStanzasSkipped:
     **Validates: Requirements 2.2**
     """
 
-    @settings(max_examples=100)
     @given(
         omission_type=st.sampled_from(["missing_package", "missing_version", "missing_both"]),
         version=_version_string(),
@@ -330,7 +327,6 @@ class TestProperty6BinaryFieldCommaSplitting:
     **Validates: Requirements 2.3**
     """
 
-    @settings(max_examples=100)
     @given(
         package_names=st.lists(_debian_package_name(), min_size=1, max_size=10),
         separator=st.sampled_from([", ", ",", " , ", ",  "]),

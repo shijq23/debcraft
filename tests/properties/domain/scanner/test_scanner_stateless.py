@@ -17,7 +17,7 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.values import Artifact, ArtifactType
@@ -121,7 +121,6 @@ class TestProperty3ScannerStatelessness:
     **Validates: Requirements 1.7**
     """
 
-    @settings(max_examples=50)
     @given(content=st_dpkg_status_content())
     @pytest.mark.asyncio
     async def test_scan_twice_produces_identical_packages(self, content: str) -> None:
@@ -154,7 +153,6 @@ class TestProperty3ScannerStatelessness:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(content=st_dpkg_status_content())
     @pytest.mark.asyncio
     async def test_scan_twice_produces_identical_strategy(self, content: str) -> None:
@@ -186,7 +184,6 @@ class TestProperty3ScannerStatelessness:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(content=st_dpkg_status_content())
     @pytest.mark.asyncio
     async def test_scan_twice_produces_identical_artifact_path(self, content: str) -> None:

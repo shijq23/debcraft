@@ -23,7 +23,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.cli import _StructuredFormatter
@@ -185,7 +185,6 @@ class TestPreservationKnownFileTypesProcessed:
     and the appropriate parser is invoked.
     """
 
-    @settings(max_examples=50)
     @given(data=st.data())
     def test_known_file_types_trigger_read_file(self, data: st.DataObject) -> None:
         """For any URL with a known file type, read_file is called.
@@ -224,7 +223,6 @@ class TestPreservationKnownFileTypesProcessed:
         # The key assertion: read_file WAS called for known file types
         file_reader.read_file.assert_called_once_with(file_info.local_path)
 
-    @settings(max_examples=30)
     @given(keyword=st.sampled_from(["packages", "sources", "contents", "release"]))
     def test_each_known_type_is_correctly_classified(self, keyword: str) -> None:
         """_infer_file_type correctly classifies known file type keywords.
@@ -242,7 +240,6 @@ class TestPreservationKnownFileTypesProcessed:
             result = _infer_file_type(url)
             assert result == keyword, f"_infer_file_type({url!r}) returned {result!r}, expected {keyword!r}"
 
-    @settings(max_examples=20)
     @given(keyword=st.sampled_from(["packages", "sources", "contents", "release"]))
     def test_known_type_files_are_marked_indexed(self, keyword: str) -> None:
         """After processing a known file type, mark_indexed is called.
@@ -308,7 +305,6 @@ class TestPreservationNonExceptionFormatting:
     same LEVELNAME name: message base format with optional key=value pairs.
     """
 
-    @settings(max_examples=100)
     @given(
         level=st.sampled_from(_LOG_LEVELS),
         name=_logger_name_strategy,
@@ -336,7 +332,6 @@ class TestPreservationNonExceptionFormatting:
         expected = f"{expected_level} {name}: {message}"
         assert result == expected, f"Expected {expected!r}, got {result!r}"
 
-    @settings(max_examples=50)
     @given(
         level=st.sampled_from(_LOG_LEVELS),
         name=_logger_name_strategy,
@@ -381,7 +376,6 @@ class TestPreservationNonExceptionFormatting:
             if value is not None:
                 assert f"{key}={value}" in result, f"Expected {key}={value} in formatted output. Got: {result!r}"
 
-    @settings(max_examples=50)
     @given(
         level=st.sampled_from(_LOG_LEVELS),
         name=_logger_name_strategy,
@@ -427,7 +421,6 @@ class TestPreservationNonExceptionFormatting:
             if value is not None:
                 assert f"{key}={value}" in result, f"Expected {key}={value} in formatted output. Got: {result!r}"
 
-    @settings(max_examples=50)
     @given(
         level=st.sampled_from(_LOG_LEVELS),
         name=_logger_name_strategy,
@@ -453,7 +446,6 @@ class TestPreservationNonExceptionFormatting:
 
         assert "Traceback" not in result, f"Non-exception record should not contain 'Traceback'. Got: {result!r}"
 
-    @settings(max_examples=30)
     @given(
         level=st.sampled_from(_LOG_LEVELS),
         name=_logger_name_strategy,

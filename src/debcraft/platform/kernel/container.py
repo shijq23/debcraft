@@ -54,6 +54,11 @@ class KernelContainer(Container):
         self._singletons: dict[type, Any] = {}
         self._resolution_stack: set[type] = set()
 
+    @property
+    def registrations(self) -> dict[type, ServiceRegistration]:
+        """Public read-only access to the service registrations."""
+        return self._registrations
+
     def register_singleton(self, interface: type[T], implementation: type[T] | None = None) -> None:
         """Register a service with singleton lifetime.
 
@@ -221,10 +226,10 @@ class KernelScope(Scope):
             ServiceNotFoundError: If no registration exists for the type.
             CircularDependencyError: If a circular dependency is detected.
         """
-        if service_type not in self._parent._registrations:
+        if service_type not in self._parent.registrations:
             raise ServiceNotFoundError(service_type)
 
-        registration = self._parent._registrations[service_type]
+        registration = self._parent.registrations[service_type]
 
         # Singletons delegate to parent container
         if registration.lifetime == Lifetime.SINGLETON:
@@ -283,16 +288,65 @@ class KernelScope(Scope):
 
 
 def _get_constructor_annotations(cls: type) -> dict[str, type]:
-    """Extract constructor parameter type annotations excluding 'return'.
+    """Extract constructor parameter type annotations for required dependencies.
+
+    Only includes parameters that require injection — parameters with default
+    values are excluded since they do not represent mandatory dependencies.
+    Uses ``typing.get_type_hints`` with the implementation module's globals
+    and a fallback namespace containing all registered contract types to resolve
+    string annotations produced by ``from __future__ import annotations`` or
+    ``TYPE_CHECKING`` imports.
 
     Args:
         cls: The class to inspect.
 
     Returns:
-        A dictionary mapping parameter names to their annotated types.
+        A dictionary mapping parameter names to their resolved annotated types,
+        excluding parameters with defaults, 'self', and 'return'.
     """
+    import sys
+    import typing
+
     init = getattr(cls, "__init__", None)
     if init is None:
         return {}
-    annotations = getattr(init, "__annotations__", {})
-    return {k: v for k, v in annotations.items() if k != "return"}
+
+    # Use inspect.signature to identify which params have no defaults
+    sig = inspect.signature(init)
+    params_without_defaults = {
+        name
+        for name, param in sig.parameters.items()
+        if name != "self"
+        and param.default is inspect.Parameter.empty
+        and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    }
+
+    if not params_without_defaults:
+        return {}
+
+    # Build namespace for resolving string annotations:
+    # Start with the implementation module's globals, then layer in
+    # contracts to handle TYPE_CHECKING imports.
+    module = sys.modules.get(cls.__module__, None)
+    globalns: dict[str, Any] = dict(getattr(module, "__dict__", {}))
+
+    # Import all platform contracts so TYPE_CHECKING references resolve
+    contracts_module = sys.modules.get("debcraft.platform.contracts", None)
+    if contracts_module is None:
+        try:
+            import debcraft.platform.contracts as _contracts
+
+            contracts_module = _contracts
+        except ImportError:
+            pass
+    if contracts_module is not None:
+        for name in getattr(contracts_module, "__all__", []):
+            if name not in globalns:
+                globalns[name] = getattr(contracts_module, name, None)
+
+    try:
+        hints = typing.get_type_hints(init, globalns=globalns)
+    except Exception:  # pylint: disable=broad-exception-caught  # Fallback to raw annotations if type resolution fails
+        hints = getattr(init, "__annotations__", {})
+
+    return {k: v for k, v in hints.items() if k != "return" and k in params_without_defaults}

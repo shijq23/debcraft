@@ -93,7 +93,7 @@ class TestCommitAtomicity:
     isolation between sessions (in-memory SQLite shares a single connection).
     """
 
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(
         entities=st.lists(
             st.tuples(
@@ -178,7 +178,7 @@ class TestRollbackDiscardsAllChanges:
     from a fresh session, and the UnitOfWork shall accept subsequent operations.
     """
 
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(
         entities=st.lists(
             st.tuples(
@@ -252,7 +252,7 @@ class TestCancellationPreventsCommit:
     StorageError, preventing data persistence.
     """
 
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(
         entities=st.lists(
             st.tuples(

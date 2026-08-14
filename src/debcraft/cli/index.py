@@ -8,23 +8,21 @@ from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from debcraft.cli._progress import create_progress_bar
+from debcraft.cli._storage import MinimalStorageEngine
 from debcraft.infrastructure.storage.paths import resolve_xdg_path
 from debcraft.platform.contracts.events import EventBus
-from debcraft.platform.contracts.storage import StorageEngine
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from rich.progress import TaskID
+    from rich.progress import Progress, TaskID
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from debcraft.domain.indexer.service import IndexerService
     from debcraft.domain.indexer.values import IndexResult
+    from debcraft.domain.mirror.config import MirrorConfig
     from debcraft.platform.contracts.events import DomainEvent, EventHandler
-    from debcraft.platform.contracts.storage import StoragePurpose
 
 index_app = typer.Typer(name="index", help="Repository indexing commands.")
 console = Console()
@@ -161,6 +159,75 @@ def _display_index_summary(results: list[IndexResult]) -> None:
     console.print(table)
 
 
+def _discover_repos_to_index(config: MirrorConfig, repository: str | None) -> list[tuple[str, str, str, str]]:
+    """Determine which repositories to index based on config and optional filter.
+
+    Args:
+        config: The parsed mirror configuration.
+        repository: Optional repository name filter. If None, discovers all.
+
+    Returns:
+        List of (name, base_url, suite, component) tuples to index.
+    """
+    repo_configs = {repo.name: repo for repo in config.repositories}
+    repos_to_index: list[tuple[str, str, str, str]] = []
+
+    if repository:
+        if repository in repo_configs:
+            repo_cfg = repo_configs[repository]
+            for suite in repo_cfg.suites:
+                for component in repo_cfg.components:
+                    repos_to_index.append((repo_cfg.name, repo_cfg.base_url, suite, component))
+        else:
+            repos_to_index.append((repository, "", "", ""))
+    else:
+        for repo_cfg in config.repositories:
+            for suite in repo_cfg.suites:
+                for component in repo_cfg.components:
+                    repos_to_index.append((repo_cfg.name, repo_cfg.base_url, suite, component))
+
+    return repos_to_index
+
+
+async def _index_repositories(
+    repos_to_index: list[tuple[str, str, str, str]],
+    indexer_service: IndexerService,
+    progress: Progress,
+    task_id: TaskID,
+) -> list[IndexResult]:
+    """Index each repository and report progress.
+
+    Args:
+        repos_to_index: List of (name, base_url, suite, component) tuples.
+        indexer_service: The indexer service to use for indexing.
+        progress: Rich Progress instance for display updates.
+        task_id: Rich progress task ID.
+
+    Returns:
+        List of IndexResult from the indexing run.
+    """
+    results: list[IndexResult] = []
+    total = len(repos_to_index)
+
+    for i, (name, base_url, suite, component) in enumerate(repos_to_index):
+        progress.update(
+            task_id,
+            completed=(i / total) * 100,
+            description=f"Indexing {name} ({suite}/{component})...",
+        )
+
+        result = await indexer_service.index_repository(
+            repository_name=name,
+            base_url=base_url,
+            suite=suite,
+            component=component,
+        )
+        results.append(result)
+
+    progress.update(task_id, completed=100, description="Indexing complete")
+    return results
+
+
 async def _run_index(repository: str | None, progress: Progress, task_id: TaskID) -> list[IndexResult]:
     """Run the indexing workflow.
 
@@ -180,12 +247,10 @@ async def _run_index(repository: str | None, progress: Progress, task_id: TaskID
     mirror_session_factory, metadata_session_factory, mirror_engine, metadata_engine = _create_session_factories()
 
     try:
-        # Ensure schemas exist
         await _ensure_schemas(mirror_engine, metadata_engine)
 
         indexer_service = _build_indexer_service(mirror_session_factory, metadata_session_factory)
 
-        # Get the mirror file repository to check for verified files
         from debcraft.infrastructure.indexer.mirror_file_repository import (
             SqlAlchemyMirrorFileRepository,
         )
@@ -195,129 +260,25 @@ async def _run_index(repository: str | None, progress: Progress, task_id: TaskID
             metadata_session_factory=metadata_session_factory,
         )
 
-        # Get verified files to determine what to index
         verified_files = await mirror_file_repo.get_verified_files(repository_name=repository)
 
         if not verified_files:
             return []
 
-        # Determine unique repositories from the verified files
-        # Extract repository info from file URLs and mirror config
-        storage_engine = _MinimalStorageEngine()
+        storage_engine = MinimalStorageEngine()
         reader = ConfigReader(storage_engine)
         config = reader.read()
 
-        # Build a mapping of repository name -> config
-        repo_configs = {repo.name: repo for repo in config.repositories}
-
-        # Group verified files by repository name
-        # If --repository is given, only index that one
-        repos_to_index: list[tuple[str, str, str, str]] = []
-
-        if repository:
-            # Find the matching config for this repository
-            if repository in repo_configs:
-                repo_cfg = repo_configs[repository]
-                for suite in repo_cfg.suites:
-                    for component in repo_cfg.components:
-                        repos_to_index.append((repo_cfg.name, repo_cfg.base_url, suite, component))
-            else:
-                # No config found, use repository name as-is with defaults
-                repos_to_index.append((repository, "", "", ""))
-        else:
-            # Index all configured repositories that have verified files
-            for repo_cfg in config.repositories:
-                for suite in repo_cfg.suites:
-                    for component in repo_cfg.components:
-                        repos_to_index.append((repo_cfg.name, repo_cfg.base_url, suite, component))
+        repos_to_index = _discover_repos_to_index(config, repository)
 
         if not repos_to_index:
             return []
 
-        # Index each repository
-        results: list[IndexResult] = []
-        total = len(repos_to_index)
-
-        for i, (name, base_url, suite, component) in enumerate(repos_to_index):
-            progress.update(
-                task_id,
-                completed=(i / total) * 100,
-                description=f"Indexing {name} ({suite}/{component})...",
-            )
-
-            result = await indexer_service.index_repository(
-                repository_name=name,
-                base_url=base_url,
-                suite=suite,
-                component=component,
-            )
-            results.append(result)
-
-        progress.update(task_id, completed=100, description="Indexing complete")
-        return results
+        return await _index_repositories(repos_to_index, indexer_service, progress, task_id)
 
     finally:
         await mirror_engine.dispose()
         await metadata_engine.dispose()
-
-
-class _MinimalStorageEngine(StorageEngine):
-    """Minimal storage engine for CLI config path resolution.
-
-    Provides just enough of the StorageEngine interface for ConfigReader
-    to resolve paths without requiring full platform bootstrap.
-    """
-
-    def __init__(self) -> None:
-        import os
-        from pathlib import Path
-
-        xdg_config = os.environ.get("XDG_CONFIG_HOME", "")
-        if xdg_config:
-            self._config_dir = Path(xdg_config) / "debcraft"
-        else:
-            self._config_dir = Path.home() / ".config" / "debcraft"
-
-        xdg_cache = os.environ.get("XDG_CACHE_HOME", "")
-        if xdg_cache:
-            self._cache_dir = Path(xdg_cache) / "debcraft"
-        else:
-            self._cache_dir = Path.home() / ".cache" / "debcraft"
-
-    async def initialize(self) -> None:
-        """No-op for CLI context."""
-
-    async def shutdown(self) -> None:
-        """No-op for CLI context."""
-
-    def get_path(self, purpose: StoragePurpose, relative: str = "") -> Path:
-        """Resolve path for a storage purpose.
-
-        Args:
-            purpose: The named storage purpose ('config' or 'mirror').
-            relative: Optional relative path within the purpose directory.
-
-        Returns:
-            Absolute path to the resolved location.
-        """
-        if purpose == "config":
-            base = self._config_dir
-        elif purpose == "mirror":
-            base = self._cache_dir / "mirror"
-        else:
-            msg = f"Unsupported storage purpose for CLI: {purpose}"
-            raise ValueError(msg)
-
-        if relative:
-            return base / relative
-        return base
-
-    async def __aenter__(self) -> _MinimalStorageEngine:
-        """Enter async context."""
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        """Exit async context."""
 
 
 @index_app.command()
@@ -413,14 +374,7 @@ def index(
     logger = logging.getLogger("debcraft.cli.index")
 
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
+        with create_progress_bar() as progress:
             task_id = progress.add_task("Starting indexing...", total=100)
             results = asyncio.run(_run_index(repository, progress, task_id))
     except Exception as exc:

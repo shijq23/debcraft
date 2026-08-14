@@ -13,20 +13,22 @@ import json
 import tarfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from debcraft.platform.contracts.workflow import WorkflowContext
+from typing import TYPE_CHECKING, Any
 
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
 from debcraft.domain.scanner.values import (
     Artifact,
+    IdentifiedPackage,
     ScanningStrategy,
     ScanResult,
 )
+from debcraft.infrastructure.scanners._mixin import ScannerMixin
+
+if TYPE_CHECKING:
+    from debcraft.platform.contracts.workflow import WorkflowContext
 
 
-class OCIScanner:
+class OCIScanner(ScannerMixin):
     """Scans OCI image layout directories for installed Debian packages.
 
     Reads index.json and oci-layout, extracts layers from blobs/,
@@ -69,125 +71,190 @@ class OCIScanner:
         diagnostics: list[str] = []
         layout_dir = Path(artifact.path)
 
-        # Step 1: Validate oci-layout file
-        oci_layout_path = layout_dir / "oci-layout"
-        if not oci_layout_path.exists():
+        # Steps 1-3: Validate layout and read manifest layers
+        validation = self._validate_oci_artifact(layout_dir, diagnostics)
+        if validation and isinstance(validation[0], str):
+            # validation is a list of diagnostics indicating failure
             duration = time.perf_counter() - start
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=["Invalid OCI layout: missing oci-layout file"],
+                diagnostics=[str(d) for d in validation],
                 duration_seconds=duration,
                 artifact_path=artifact.path,
             )
+
+        layers: list[dict[str, Any]] = validation  # type: ignore[assignment]
+
+        # Step 4: Extract layers into virtual filesystem
+        vfs = self._extract_oci_layers(layers, layout_dir, context, diagnostics)
+        if vfs is None:
+            # Cancelled during extraction
+            duration = time.perf_counter() - start
+            return ScanResult(
+                packages=[],
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=["Scan cancelled during layer extraction"],
+                duration_seconds=duration,
+                artifact_path=artifact.path,
+            )
+
+        # Steps 5-6: Parse dpkg status from merged filesystem
+        packages = self._parse_dpkg_status_from_layers(vfs, context, diagnostics)
+
+        duration = time.perf_counter() - start
+        return ScanResult(
+            packages=packages,
+            strategy=ScanningStrategy.DPKG_METADATA.value,
+            diagnostics=diagnostics,
+            duration_seconds=duration,
+            artifact_path=artifact.path,
+        )
+
+    def _validate_oci_artifact(
+        self,
+        layout_dir: Path,
+        _diagnostics: list[str],
+    ) -> list[dict[str, Any]] | list[str]:
+        """Validate OCI layout structure and return layer descriptors.
+
+        Checks oci-layout file existence and version, reads index.json,
+        and reads the first manifest to extract layer descriptors.
+
+        Args:
+            layout_dir: Root of the OCI layout directory.
+            diagnostics: Diagnostic list (unused here but kept for API consistency).
+
+        Returns:
+            On success: list of layer descriptor dicts from the manifest.
+            On failure: list of diagnostic strings (single-element) describing the error.
+        """
+        # Step 1: Validate oci-layout file
+        layout_error = self._check_oci_layout(layout_dir)
+        if layout_error is not None:
+            return [layout_error]
+
+        # Step 2: Read index.json and get manifests
+        index_result = self._read_oci_index(layout_dir)
+        if isinstance(index_result, str):
+            return [index_result]
+
+        # Step 3: Read the first manifest and return layers
+        layers_result = self._read_manifest_layers(layout_dir, index_result[0])
+        if isinstance(layers_result, str):
+            return [layers_result]
+
+        return layers_result
+
+    def _check_oci_layout(self, layout_dir: Path) -> str | None:
+        """Validate the oci-layout file exists and has correct version.
+
+        Args:
+            layout_dir: Root of the OCI layout directory.
+
+        Returns:
+            None on success, or a diagnostic string describing the error.
+        """
+        oci_layout_path = layout_dir / "oci-layout"
+        if not oci_layout_path.exists():
+            return "Invalid OCI layout: missing oci-layout file"
 
         try:
             oci_layout_content = oci_layout_path.read_text(encoding="utf-8")
             oci_layout = json.loads(oci_layout_content)
         except (OSError, json.JSONDecodeError) as e:
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=[f"Invalid OCI layout: cannot read oci-layout file: {e}"],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return f"Invalid OCI layout: cannot read oci-layout file: {e}"
 
         layout_version = oci_layout.get("imageLayoutVersion")
         if layout_version != "1.0.0":
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=[
-                    f"Invalid OCI layout: unsupported imageLayoutVersion '{layout_version}' (expected '1.0.0')"
-                ],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return f"Invalid OCI layout: unsupported imageLayoutVersion '{layout_version}' (expected '1.0.0')"
 
-        # Step 2: Read index.json
+        return None
+
+    def _read_oci_index(self, layout_dir: Path) -> list[dict[str, Any]] | str:
+        """Read and validate index.json, returning manifest descriptors.
+
+        Args:
+            layout_dir: Root of the OCI layout directory.
+
+        Returns:
+            On success: list of manifest descriptors from index.json.
+            On failure: a diagnostic string describing the error.
+        """
         index_path = layout_dir / "index.json"
         if not index_path.exists():
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=["Invalid OCI layout: missing index.json"],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return "Invalid OCI layout: missing index.json"
 
         try:
             index_content = index_path.read_text(encoding="utf-8")
             index_data = json.loads(index_content)
         except (OSError, json.JSONDecodeError) as e:
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=[f"Invalid OCI layout: cannot read index.json: {e}"],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return f"Invalid OCI layout: cannot read index.json: {e}"
 
         manifests = index_data.get("manifests", [])
         if not manifests:
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=["Invalid OCI layout: index.json contains no manifests"],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return "Invalid OCI layout: index.json contains no manifests"
 
-        # Step 3: Read the first manifest
-        manifest_descriptor = manifests[0]
+        result: list[dict[str, Any]] = manifests
+        return result
+
+    def _read_manifest_layers(
+        self, layout_dir: Path, manifest_descriptor: dict[str, Any]
+    ) -> list[dict[str, Any]] | str:
+        """Read a manifest blob and extract layer descriptors.
+
+        Args:
+            layout_dir: Root of the OCI layout directory.
+            manifest_descriptor: The manifest descriptor dict from index.json.
+
+        Returns:
+            On success: list of layer descriptor dicts from the manifest.
+            On failure: a diagnostic string describing the error.
+        """
         manifest_digest = manifest_descriptor.get("digest", "")
 
         manifest_blob_path = self._digest_to_blob_path(layout_dir, manifest_digest)
         if manifest_blob_path is None or not manifest_blob_path.exists():
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=[f"Invalid OCI layout: manifest blob not found for digest '{manifest_digest}'"],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return f"Invalid OCI layout: manifest blob not found for digest '{manifest_digest}'"
 
         try:
             manifest_content = manifest_blob_path.read_text(encoding="utf-8")
             manifest_data = json.loads(manifest_content)
         except (OSError, json.JSONDecodeError) as e:
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=[f"Invalid OCI layout: cannot read manifest blob: {e}"],
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
+            return f"Invalid OCI layout: cannot read manifest blob: {e}"
 
-        layers = manifest_data.get("layers", [])
+        layers: list[dict[str, Any]] = manifest_data.get("layers", [])
+        return layers
 
-        # Step 4: Extract layers bottom-to-top into virtual filesystem
+    def _extract_oci_layers(
+        self,
+        layers: list[dict[str, Any]],
+        layout_dir: Path,
+        context: WorkflowContext,
+        diagnostics: list[str],
+    ) -> dict[str, bytes] | None:
+        """Extract OCI layers bottom-to-top into a virtual filesystem.
+
+        Iterates over layer descriptors, decompresses each blob, and
+        merges into the VFS with whiteout handling. Checks cancellation
+        between layers.
+
+        Args:
+            layers: List of layer descriptor dicts from the manifest.
+            layout_dir: Root of the OCI layout directory.
+            context: Workflow context for cancellation and progress.
+            diagnostics: List to append diagnostic messages to.
+
+        Returns:
+            Merged virtual filesystem dict, or None if cancelled.
+        """
         vfs: dict[str, bytes] = {}
         total_layers = len(layers)
 
         for layer_index, layer_descriptor in enumerate(layers):
             # Check cancellation between layers
             if context.cancellation_token.is_cancelled:
-                duration = time.perf_counter() - start
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=["Scan cancelled during layer extraction"],
-                    duration_seconds=duration,
-                    artifact_path=artifact.path,
-                )
+                return None
 
             media_type = layer_descriptor.get("mediaType", "")
             layer_digest = layer_descriptor.get("digest", "")
@@ -215,58 +282,54 @@ class OCIScanner:
             # Report progress
             if total_layers > 0:
                 progress_pct = ((layer_index + 1) / total_layers) * 80.0
-                context.progress.report(
+                self._report_progress(
+                    context,
                     progress_pct,
                     f"Extracted layer {layer_index + 1}/{total_layers}",
                 )
 
-        # Step 5: Look for var/lib/dpkg/status in merged filesystem
+        return vfs
+
+    def _parse_dpkg_status_from_layers(
+        self,
+        vfs: dict[str, bytes],
+        context: WorkflowContext,
+        diagnostics: list[str],
+    ) -> list[IdentifiedPackage]:
+        """Parse dpkg status file from the merged virtual filesystem.
+
+        Looks for var/lib/dpkg/status in the VFS, decodes and parses it.
+
+        Args:
+            vfs: Merged virtual filesystem dict (path -> content bytes).
+            context: Workflow context for progress reporting.
+            diagnostics: List to append diagnostic messages to.
+
+        Returns:
+            List of identified packages (may be empty).
+        """
         dpkg_status_path = "var/lib/dpkg/status"
-        if dpkg_status_path in vfs:
-            # Step 6: Parse dpkg status
-            try:
-                status_content = vfs[dpkg_status_path].decode("utf-8")
-            except UnicodeDecodeError as e:
-                duration = time.perf_counter() - start
-                diagnostics.append(f"Cannot decode dpkg status file: {e}")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=artifact.path,
-                )
+        if dpkg_status_path not in vfs:
+            diagnostics.append("dpkg status file not found at var/lib/dpkg/status in merged layer filesystem")
+            self._report_progress(context, 100.0, "Scan complete: no packages identified")
+            return []
 
-            parse_result = parse_dpkg_status(status_content)
-            diagnostics.extend(parse_result.diagnostics)
+        try:
+            status_content = vfs[dpkg_status_path].decode("utf-8")
+        except UnicodeDecodeError as e:
+            diagnostics.append(f"Cannot decode dpkg status file: {e}")
+            return []
 
-            context.progress.report(
-                100.0,
-                f"Scan complete: {len(parse_result.packages)} packages identified",
-            )
+        parse_result = parse_dpkg_status(status_content)
+        diagnostics.extend(parse_result.diagnostics)
 
-            duration = time.perf_counter() - start
-            return ScanResult(
-                packages=parse_result.packages,
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=artifact.path,
-            )
-
-        # Step 6: No dpkg status found
-        diagnostics.append("dpkg status file not found at var/lib/dpkg/status in merged layer filesystem")
-
-        context.progress.report(100.0, "Scan complete: no packages identified")
-
-        duration = time.perf_counter() - start
-        return ScanResult(
-            packages=[],
-            strategy=ScanningStrategy.DPKG_METADATA.value,
-            diagnostics=diagnostics,
-            duration_seconds=duration,
-            artifact_path=artifact.path,
+        self._report_progress(
+            context,
+            100.0,
+            f"Scan complete: {len(parse_result.packages)} packages identified",
         )
+
+        return parse_result.packages
 
     def _digest_to_blob_path(self, layout_dir: Path, digest: str) -> Path | None:
         """Convert an OCI content-addressable digest to a blob file path.

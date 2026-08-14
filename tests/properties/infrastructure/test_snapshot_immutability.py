@@ -17,7 +17,7 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -94,7 +94,6 @@ class TestPublishedSnapshotImmutability:
     update() or delete() raises ImmutableEntityError.
     """
 
-    @settings(max_examples=200)
     @given(
         schema_version=st.integers(min_value=1, max_value=100),
     )
@@ -139,7 +138,6 @@ class TestPublishedSnapshotImmutability:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         schema_version=st.integers(min_value=1, max_value=100),
     )
@@ -194,7 +192,6 @@ class TestNaturalKeyUniquenessEnforcement:
     a StorageError.
     """
 
-    @settings(max_examples=200)
     @given(
         package_name=_safe_text(),
         version=_safe_text(),

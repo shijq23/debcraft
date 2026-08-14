@@ -440,6 +440,8 @@ class TestMirrorWorkflowCancellation:
         # Pre-cancel the token
         mock_context.cancellation_token.cancel()
 
+        from sqlalchemy.exc import OperationalError
+
         from debcraft.infrastructure.mirror.config_reader import ConfigReader
         from debcraft.infrastructure.mirror.download import DownloadCoordinator
         from debcraft.platform.contracts.persistence import DatabaseProvider
@@ -451,7 +453,7 @@ class TestMirrorWorkflowCancellation:
         mock_coord.start = AsyncMock()
         mock_coord.close = AsyncMock()
         mock_db = AsyncMock()
-        mock_db.get_session.side_effect = RuntimeError("db connection failed")
+        mock_db.get_session.side_effect = OperationalError("", [], Exception("db connection failed"))
 
         mock_context.scope.resolve.side_effect = lambda t: {
             ConfigReader: mock_reader,

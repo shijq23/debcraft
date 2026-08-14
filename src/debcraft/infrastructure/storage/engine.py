@@ -223,7 +223,7 @@ class DefaultStorageEngine(StorageEngine):
             await session.begin()
             # Mark all cache entries as invalid — they need recomputation
             for model in (ParsedDep5, NormalizedLicense, ChecksumCache):
-                stmt = update(model).where(model.valid == True).values(valid=False)  # noqa: E712
+                stmt = update(model).where(model.valid.is_(True)).values(valid=False)
                 await session.execute(stmt)
             await session.commit()
         except Exception:

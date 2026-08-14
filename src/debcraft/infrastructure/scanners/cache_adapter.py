@@ -78,7 +78,7 @@ class EnrichmentCacheAdapter:
                     return None
 
                 return self._to_domain(row)
-        except (SQLAlchemyError, Exception) as exc:
+        except SQLAlchemyError as exc:
             logger.warning(
                 "Enrichment cache read failed for %s/%s/%s (snapshot %d): %s",
                 package_name,
@@ -159,7 +159,7 @@ class EnrichmentCacheAdapter:
                     session.add(entry)
 
                 await session.commit()
-        except (SQLAlchemyError, Exception) as exc:
+        except SQLAlchemyError as exc:
             logger.warning(
                 "Enrichment cache write failed for %s/%s/%s (snapshot %d): %s",
                 package_name,
@@ -175,7 +175,7 @@ class EnrichmentCacheAdapter:
         license_expressions: list[tuple[str, str]] = []
         if row.license_expressions_json:
             raw = json.loads(row.license_expressions_json)
-            license_expressions = [(expr, algo) for expr, algo in raw]
+            license_expressions = [tuple(item) for item in raw]
 
         return PackageEnrichment(
             source_package=row.source_package,

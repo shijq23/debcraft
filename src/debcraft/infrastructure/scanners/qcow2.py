@@ -14,8 +14,8 @@ import time
 from typing import TYPE_CHECKING
 
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
-from debcraft.domain.scanner.filesystem_analyzer import analyze_filesystem
 from debcraft.domain.scanner.values import ScanningStrategy, ScanResult
+from debcraft.infrastructure.scanners._mixin import ScannerMixin
 
 if TYPE_CHECKING:
     from debcraft.domain.scanner.ports import (
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 QCOW2_MAGIC = b"QFI\xfb"
 
 
-class QCOW2Scanner:
+class QCOW2Scanner(ScannerMixin):
     """Scans QCOW2 disk images for installed Debian packages.
 
     Uses guestfs (constructor-injected) to inspect the image,
@@ -88,7 +88,7 @@ class QCOW2Scanner:
                 "guestfs library is not available: cannot inspect QCOW2 images. "
                 "Install python3-guestfs or libguestfs Python bindings."
             )
-            context.progress.report(100.0, "Scan complete: guestfs not available")
+            self._report_progress(context, 100.0, "Scan complete: guestfs not available")
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
@@ -97,207 +97,260 @@ class QCOW2Scanner:
                 artifact_path=path,
             )
 
-        # Step 2: Validate QCOW2 magic bytes (Req 8.4, 8.5)
-        context.progress.report(5.0, "Validating QCOW2 magic bytes")
-        try:
-            with open(path, "rb") as f:
-                header = f.read(4)
-        except (OSError, PermissionError) as e:
-            duration = time.perf_counter() - start_time
-            diagnostics.append(f"Cannot read QCOW2 image at '{path}': {e}")
-            context.progress.report(100.0, "Scan complete: file not readable")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=path,
-            )
+        # Step 2: Validate QCOW2 magic bytes
+        early_result = self._validate_qcow2_header(context, path, start_time, diagnostics)
+        if early_result is not None:
+            return early_result
 
-        if len(header) < 4 or header != QCOW2_MAGIC:
-            duration = time.perf_counter() - start_time
-            diagnostics.append(
-                f"Invalid QCOW2 image at '{path}': missing QFI\\xfb magic bytes at offset 0 (got {header!r})"
-            )
-            context.progress.report(100.0, "Scan complete: invalid QCOW2 format")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=path,
-            )
-
-        # Step 3: Check cancellation before opening image (Req 8.7)
-        if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled before opening image")
-            context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=path,
-            )
-
-        # Open image via guestfs
-        context.progress.report(15.0, "Opening QCOW2 image via guestfs")
-        try:
-            self._guestfs.open_image(path, readonly=True)
-        except Exception as e:
-            duration = time.perf_counter() - start_time
-            diagnostics.append(f"Failed to open QCOW2 image at '{path}' via guestfs: {e}")
-            context.progress.report(100.0, "Scan complete: image open failed")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=path,
-            )
+        # Step 3: Check cancellation and open image via guestfs
+        early_result = self._open_guestfs_image(context, path, start_time, diagnostics)
+        if early_result is not None:
+            return early_result
 
         try:
-            # Step 4: Inspect OS roots, check cancellation (Req 8.6, 8.7)
-            if context.cancellation_token.is_cancelled:
-                duration = time.perf_counter() - start_time
-                diagnostics.append("Scan cancelled before OS inspection")
-                context.progress.report(100.0, "Scan cancelled")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
+            # Steps 4-5: Inspect OS roots and mount
+            early_result = self._inspect_and_mount_root(context, path, start_time, diagnostics)
+            if early_result is not None:
+                return early_result
 
-            context.progress.report(30.0, "Inspecting OS roots")
-            try:
-                roots = self._guestfs.inspect_os()
-            except Exception as e:
-                duration = time.perf_counter() - start_time
-                diagnostics.append(f"Failed to inspect OS roots in QCOW2 image: {e}")
-                context.progress.report(100.0, "Scan complete: OS inspection failed")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
-
-            # Req 8.6: No inspectable OS root
-            if not roots:
-                duration = time.perf_counter() - start_time
-                diagnostics.append(
-                    "No inspectable operating system root found in QCOW2 image: "
-                    "unrecognized partition layout or unsupported filesystem"
-                )
-                context.progress.report(100.0, "Scan complete: no OS root found")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
-
-            # Step 5: Mount first root read-only
-            if context.cancellation_token.is_cancelled:
-                duration = time.perf_counter() - start_time
-                diagnostics.append("Scan cancelled before mounting filesystem")
-                context.progress.report(100.0, "Scan cancelled")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
-
-            context.progress.report(50.0, "Mounting root filesystem read-only")
-            first_root = roots[0]
-            try:
-                self._guestfs.mount_readonly(first_root, "/")
-            except Exception as e:
-                duration = time.perf_counter() - start_time
-                diagnostics.append(f"Failed to mount root '{first_root}' read-only: {e}")
-                context.progress.report(100.0, "Scan complete: mount failed")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
-
-            # Step 6: Read /var/lib/dpkg/status, check cancellation (Req 8.1)
-            if context.cancellation_token.is_cancelled:
-                duration = time.perf_counter() - start_time
-                diagnostics.append("Scan cancelled before reading dpkg status")
-                context.progress.report(100.0, "Scan cancelled")
-                return ScanResult(
-                    packages=[],
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
-
-            context.progress.report(65.0, "Reading /var/lib/dpkg/status")
-            dpkg_content: str | None = None
-            try:
-                raw_bytes = self._guestfs.read_file("/var/lib/dpkg/status")
-                dpkg_content = raw_bytes.decode("utf-8", errors="replace")
-            except Exception:
-                # dpkg status not readable — will fall back
-                dpkg_content = None
-
-            # Step 7: Parse or fall back (Req 8.2, 8.3)
-            if dpkg_content is not None:
-                # Req 8.2: Parse dpkg status, strategy "dpkg_metadata"
-                context.progress.report(75.0, "Parsing dpkg status file")
-                parse_result = parse_dpkg_status(dpkg_content)
-                diagnostics.extend(parse_result.diagnostics)
-
-                # Check cancellation between package entries
-                packages = []
-                for pkg in parse_result.packages:
-                    if context.cancellation_token.is_cancelled:
-                        duration = time.perf_counter() - start_time
-                        diagnostics.append(
-                            f"Scan cancelled after processing {len(packages)} of {len(parse_result.packages)} packages"
-                        )
-                        context.progress.report(100.0, "Scan cancelled")
-                        return ScanResult(
-                            packages=packages,
-                            strategy=ScanningStrategy.DPKG_METADATA.value,
-                            diagnostics=diagnostics,
-                            duration_seconds=duration,
-                            artifact_path=path,
-                        )
-                    packages.append(pkg)
-
-                duration = time.perf_counter() - start_time
-                context.progress.report(
-                    100.0,
-                    f"Scan complete: identified {len(packages)} packages",
-                )
-                return ScanResult(
-                    packages=packages,
-                    strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
-                    artifact_path=path,
-                )
-            else:
-                # Req 8.3: Fall back to filesystem analysis
-                context.progress.report(75.0, "dpkg status not found, falling back to filesystem analysis")
-                return await self._fallback_filesystem_analysis(artifact, context, path, start_time, diagnostics)
+            # Steps 6-7: Read dpkg status and parse or fall back
+            return await self._read_and_parse_dpkg(artifact, context, path, start_time, diagnostics)
         finally:
             # Always close guestfs to release resources
             with contextlib.suppress(Exception):
                 self._guestfs.close()
+
+    def _validate_qcow2_header(
+        self,
+        context: WorkflowContext,
+        path: str,
+        start_time: float,
+        diagnostics: list[str],
+    ) -> ScanResult | None:
+        """Validate QCOW2 magic bytes at offset 0.
+
+        Returns a ScanResult if validation fails, or None to continue.
+        """
+        self._report_progress(context, 5.0, "Validating QCOW2 magic bytes")
+        try:
+            with open(path, "rb") as f:
+                header = f.read(4)
+        except (OSError, PermissionError) as e:
+            diagnostics.append(f"Cannot read QCOW2 image at '{path}': {e}")
+            self._report_progress(context, 100.0, "Scan complete: file not readable")
+            return self._build_empty_result(
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=diagnostics,
+                start_time=start_time,
+                artifact_path=path,
+            )
+
+        if len(header) < 4 or header != QCOW2_MAGIC:
+            diagnostics.append(
+                f"Invalid QCOW2 image at '{path}': missing QFI\\xfb magic bytes at offset 0 (got {header!r})"
+            )
+            self._report_progress(context, 100.0, "Scan complete: invalid QCOW2 format")
+            return self._build_empty_result(
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=diagnostics,
+                start_time=start_time,
+                artifact_path=path,
+            )
+
+        return None
+
+    def _open_guestfs_image(
+        self,
+        context: WorkflowContext,
+        path: str,
+        start_time: float,
+        diagnostics: list[str],
+    ) -> ScanResult | None:
+        """Check cancellation and open image via guestfs.
+
+        Returns a ScanResult if cancelled or open fails, or None to continue.
+        """
+        if context.cancellation_token.is_cancelled:
+            self._report_progress(context, 100.0, "Scan cancelled")
+            return self._build_cancellation_result(
+                step="before opening image",
+                start_time=start_time,
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                artifact_path=path,
+                diagnostics=diagnostics,
+            )
+
+        self._report_progress(context, 15.0, "Opening QCOW2 image via guestfs")
+        try:
+            self._guestfs.open_image(path, readonly=True)  # type: ignore[union-attr]
+        except (OSError, RuntimeError) as e:
+            duration = time.perf_counter() - start_time
+            diagnostics.append(f"Failed to open QCOW2 image at '{path}' via guestfs: {e}")
+            self._report_progress(context, 100.0, "Scan complete: image open failed")
+            return ScanResult(
+                packages=[],
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=diagnostics,
+                duration_seconds=duration,
+                artifact_path=path,
+            )
+
+        return None
+
+    def _inspect_and_mount_root(
+        self,
+        context: WorkflowContext,
+        path: str,
+        start_time: float,
+        diagnostics: list[str],
+    ) -> ScanResult | None:
+        """Inspect OS roots and mount the first root read-only.
+
+        Returns a ScanResult if cancelled, inspection fails, or mount fails.
+        Returns None to continue processing.
+        """
+        # Check cancellation before OS inspection
+        if context.cancellation_token.is_cancelled:
+            self._report_progress(context, 100.0, "Scan cancelled")
+            return self._build_cancellation_result(
+                step="before OS inspection",
+                start_time=start_time,
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                artifact_path=path,
+                diagnostics=diagnostics,
+            )
+
+        self._report_progress(context, 30.0, "Inspecting OS roots")
+        try:
+            roots = self._guestfs.inspect_os()  # type: ignore[union-attr]
+        except (OSError, RuntimeError) as e:
+            duration = time.perf_counter() - start_time
+            diagnostics.append(f"Failed to inspect OS roots in QCOW2 image: {e}")
+            self._report_progress(context, 100.0, "Scan complete: OS inspection failed")
+            return ScanResult(
+                packages=[],
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=diagnostics,
+                duration_seconds=duration,
+                artifact_path=path,
+            )
+
+        # No inspectable OS root
+        if not roots:
+            duration = time.perf_counter() - start_time
+            diagnostics.append(
+                "No inspectable operating system root found in QCOW2 image: "
+                "unrecognized partition layout or unsupported filesystem"
+            )
+            self._report_progress(context, 100.0, "Scan complete: no OS root found")
+            return ScanResult(
+                packages=[],
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=diagnostics,
+                duration_seconds=duration,
+                artifact_path=path,
+            )
+
+        # Check cancellation before mounting
+        if context.cancellation_token.is_cancelled:
+            self._report_progress(context, 100.0, "Scan cancelled")
+            return self._build_cancellation_result(
+                step="before mounting filesystem",
+                start_time=start_time,
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                artifact_path=path,
+                diagnostics=diagnostics,
+            )
+
+        self._report_progress(context, 50.0, "Mounting root filesystem read-only")
+        first_root = roots[0]
+        try:
+            self._guestfs.mount_readonly(first_root, "/")  # type: ignore[union-attr]
+        except (OSError, RuntimeError) as e:
+            duration = time.perf_counter() - start_time
+            diagnostics.append(f"Failed to mount root '{first_root}' read-only: {e}")
+            self._report_progress(context, 100.0, "Scan complete: mount failed")
+            return ScanResult(
+                packages=[],
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                diagnostics=diagnostics,
+                duration_seconds=duration,
+                artifact_path=path,
+            )
+
+        return None
+
+    async def _read_and_parse_dpkg(
+        self,
+        artifact: Artifact,
+        context: WorkflowContext,
+        path: str,
+        start_time: float,
+        diagnostics: list[str],
+    ) -> ScanResult:
+        """Read /var/lib/dpkg/status and parse, or fall back to filesystem analysis.
+
+        Returns a ScanResult with packages from dpkg parsing or filesystem analysis.
+        """
+        # Check cancellation before reading dpkg status
+        if context.cancellation_token.is_cancelled:
+            self._report_progress(context, 100.0, "Scan cancelled")
+            return self._build_cancellation_result(
+                step="before reading dpkg status",
+                start_time=start_time,
+                strategy=ScanningStrategy.DPKG_METADATA.value,
+                artifact_path=path,
+                diagnostics=diagnostics,
+            )
+
+        self._report_progress(context, 65.0, "Reading /var/lib/dpkg/status")
+        dpkg_content: str | None = None
+        try:
+            raw_bytes = self._guestfs.read_file("/var/lib/dpkg/status")  # type: ignore[union-attr]
+            dpkg_content = raw_bytes.decode("utf-8", errors="replace")
+        except (OSError, RuntimeError):
+            # dpkg status not readable — will fall back
+            dpkg_content = None
+
+        if dpkg_content is not None:
+            return self._parse_dpkg_packages(context, path, start_time, diagnostics, dpkg_content)
+
+        # Fall back to filesystem analysis
+        self._report_progress(context, 75.0, "dpkg status not found, falling back to filesystem analysis")
+        return await self._fallback_filesystem_analysis(artifact, context, path, start_time, diagnostics)
+
+    def _parse_dpkg_packages(
+        self,
+        context: WorkflowContext,
+        path: str,
+        start_time: float,
+        diagnostics: list[str],
+        dpkg_content: str,
+    ) -> ScanResult:
+        """Parse dpkg status content into packages with cancellation checks.
+
+        Returns a ScanResult with the parsed packages.
+        """
+        self._report_progress(context, 75.0, "Parsing dpkg status file")
+        parse_result = parse_dpkg_status(dpkg_content)
+        diagnostics.extend(parse_result.diagnostics)
+
+        # Check cancellation between package entries
+        result = self._iterate_packages_with_cancellation(
+            parse_result.packages,
+            context,
+            start_time,
+            ScanningStrategy.DPKG_METADATA.value,
+            artifact_path=path,
+            diagnostics=diagnostics,
+        )
+
+        self._report_progress(
+            context,
+            100.0,
+            f"Scan complete: identified {len(result.packages)} packages",
+        )
+        return result
 
     async def _fallback_filesystem_analysis(
         self,
@@ -329,50 +382,16 @@ class QCOW2Scanner:
             for entry in entries:
                 file_paths.append("/" + entry)
 
-        if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled during filesystem traversal")
-            context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.FILESYSTEM_ANALYSIS.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=path,
-            )
-
-        # Get snapshot_id from artifact options
-        snapshot_id = int(artifact.options.get("snapshot_id", "0"))
-
-        # Run filesystem analysis
-        result = await analyze_filesystem(
+        # Run filesystem analysis with pre-cancellation check and cancellation iteration
+        return await self._analyze_and_build_filesystem_result(
             file_paths=file_paths,
+            context=context,
             contents_port=self._contents_port,
             package_port=self._package_port,
-            snapshot_id=snapshot_id,
-        )
-
-        diagnostics.extend(result.diagnostics)
-
-        # Check cancellation for the resulting packages
-        packages = []
-        for pkg in result.packages:
-            if context.cancellation_token.is_cancelled:
-                diagnostics.append(
-                    f"Scan cancelled after processing {len(packages)} of {len(result.packages)} packages"
-                )
-                break
-            packages.append(pkg)
-
-        duration = time.perf_counter() - start_time
-        context.progress.report(
-            100.0,
-            f"Scan complete: identified {len(packages)} packages via filesystem analysis",
-        )
-        return ScanResult(
-            packages=packages,
-            strategy=ScanningStrategy.FILESYSTEM_ANALYSIS.value,
-            diagnostics=diagnostics,
-            duration_seconds=duration,
+            artifact=artifact,
+            start_time=start_time,
             artifact_path=path,
+            diagnostics=diagnostics,
+            use_cancellation_iteration=True,
+            pre_cancellation_step="filesystem traversal",
         )

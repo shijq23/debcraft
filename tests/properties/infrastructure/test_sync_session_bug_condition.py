@@ -134,7 +134,7 @@ class TestProperty1BugConditionSyncSession:
         config=_repository_config_strategy,
         session_id=_session_id_strategy,
     )
-    @settings(max_examples=20, deadline=10000)
+    @settings(deadline=10000)
     @pytest.mark.asyncio
     async def test_sync_session_persisted_after_sync(
         self,

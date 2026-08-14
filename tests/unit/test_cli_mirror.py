@@ -85,7 +85,7 @@ def test_mirror_list_displays_multiple_repositories():
     assert "repo-one" in result.output
     assert "repo-two" in result.output
     # Rich may truncate long URLs in narrow terminals, check prefix
-    assert "https://example.com" in result.output
+    assert "https://example.com/" in result.output
     assert "/repo1" in result.output
     assert "/repo2" in result.output
     assert "stable" in result.output

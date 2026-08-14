@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import update
+from sqlalchemy.exc import SQLAlchemyError
 
 from debcraft.infrastructure.mirror.config_reader import ConfigReader
 from debcraft.infrastructure.mirror.download import DownloadCoordinator
@@ -179,8 +180,7 @@ class MirrorWorkflow(Workflow):
                     )
                 )
 
-            except Exception as exc:
-                # Per-repository isolation: one failure doesn't stop others
+            except Exception as exc:  # pylint: disable=broad-exception-caught  # Per-repo isolation: one failure must not stop other syncs
                 failed_repositories.append(repo_config.name)
                 context.logger.error(
                     "Repository synchronization failed",
@@ -254,7 +254,7 @@ class MirrorWorkflow(Workflow):
                 )
 
             context.logger.info("Cancellation state rollback completed successfully")
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             # Req 9.5: If commit fails, log at ERROR and exit without
             # modifying Part_Files — next session will detect and recover
             context.logger.error(

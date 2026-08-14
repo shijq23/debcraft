@@ -71,7 +71,6 @@ class TestProperty1TokenBucketReplenishment:
     upon initialization, the token count SHALL equal `burst_size`.
     """
 
-    @settings(max_examples=200)
     @given(rate=rate_strategy, burst_size=burst_strategy)
     def test_initialization_sets_tokens_to_burst_size(self, rate: float, burst_size: int) -> None:
         """Validate Requirements 1.6.
@@ -82,7 +81,6 @@ class TestProperty1TokenBucketReplenishment:
         assert limiter._tokens == float(burst_size)
         assert limiter._max_tokens == burst_size
 
-    @settings(max_examples=200)
     @given(
         rate=rate_strategy,
         burst_size=burst_strategy,
@@ -127,7 +125,6 @@ class TestProperty1TokenBucketReplenishment:
             f"(rate={rate}, burst={burst_size}, initial={initial_tokens}, elapsed={elapsed})"
         )
 
-    @settings(max_examples=200)
     @given(
         rate=rate_strategy,
         burst_size=burst_strategy,
@@ -223,7 +220,6 @@ class TestProperty2AcquireBlockingAndTimeout:
     """
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -255,7 +251,6 @@ class TestProperty2AcquireBlockingAndTimeout:
         )
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -280,7 +275,6 @@ class TestProperty2AcquireBlockingAndTimeout:
         assert exc_info.value.timeout == timeout
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -338,7 +332,6 @@ class TestProperty3MaximumRequestRateEnforcement:
     """
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -382,7 +375,6 @@ class TestProperty3MaximumRequestRateEnforcement:
         )
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

@@ -34,7 +34,7 @@ class TestCliDatabaseProviderBugCondition:
     They FAIL on unfixed code, confirming the bug exists. After the fix, they PASS.
     """
 
-    @settings(max_examples=10, deadline=None)
+    @settings(deadline=None)
     @given(db_name=st.sampled_from(["mirror", "metadata", "cache"]))
     def test_get_session_returns_non_none(self, db_name: str) -> None:
         """For all DatabaseName values, get_session returns a non-None value.
@@ -54,7 +54,7 @@ class TestCliDatabaseProviderBugCondition:
             f"Expected a valid AsyncSession instance."
         )
 
-    @settings(max_examples=10, deadline=None)
+    @settings(deadline=None)
     @given(db_name=st.sampled_from(["mirror", "metadata", "cache"]))
     def test_session_supports_close_without_attribute_error(self, db_name: str) -> None:
         """For all DatabaseName values, the returned session supports close().
@@ -75,7 +75,7 @@ class TestCliDatabaseProviderBugCondition:
             f"This causes 'AttributeError: NoneType has no attribute close' in MirrorEngine."
         )
 
-    @settings(max_examples=10, deadline=None)
+    @settings(deadline=None)
     @given(db_name=st.sampled_from(["mirror", "metadata", "cache"]))
     def test_session_supports_execute_without_attribute_error(self, db_name: str) -> None:
         """For all DatabaseName values, the returned session supports execute().
@@ -96,7 +96,7 @@ class TestCliDatabaseProviderBugCondition:
             f"This causes 'AttributeError: NoneType has no attribute execute' in MirrorEngine."
         )
 
-    @settings(max_examples=10, deadline=None)
+    @settings(deadline=None)
     @given(db_name=st.sampled_from(["mirror", "metadata", "cache"]))
     def test_session_supports_commit_and_rollback(self, db_name: str) -> None:
         """For all DatabaseName values, the returned session supports commit() and rollback().

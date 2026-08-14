@@ -124,7 +124,6 @@ class TestProperty8VerifiedFilesNeverOverwritten:
     overwrite, or delete that file — the comparator produces a skip decision.
     """
 
-    @settings(max_examples=100)
     @given(
         url=_url_strategy,
         sha256=_sha256_strategy,
@@ -162,7 +161,7 @@ class TestProperty8VerifiedFilesNeverOverwritten:
         assert decisions[0].action == "skip"
         assert decisions[0].reason == "checksum matches"
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(
         sha256=_sha256_strategy,
         size_bytes=_size_strategy,
@@ -233,7 +232,7 @@ class TestProperty9StartupCleanupDownloading:
     them to QUEUED via _resume_interrupted_downloads().
     """
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(
         num_downloading=st.integers(min_value=1, max_value=20),
     )
@@ -283,7 +282,7 @@ class TestProperty9StartupCleanupDownloading:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(
         num_downloading=st.integers(min_value=1, max_value=10),
         num_verified=st.integers(min_value=0, max_value=10),
@@ -369,7 +368,6 @@ class TestProperty12StateMachineForwardOnly:
     except FAILED (which can be reached from any state).
     """
 
-    @settings(max_examples=100)
     @given(
         state=st.sampled_from(
             [
@@ -433,7 +431,6 @@ class TestProperty12StateMachineForwardOnly:
         assert len(all_states) == 7
         assert set(forward_order) | {RepositoryFileState.FAILED} == all_states
 
-    @settings(max_examples=100)
     @given(
         state_pair=st.tuples(
             st.sampled_from(
@@ -506,7 +503,7 @@ class TestProperty13UrlUniquenessUpsertIdempotency:
     SHALL contain exactly one RepositoryFile entity with that URL.
     """
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(
         url=_url_strategy,
         sha256_1=_sha256_strategy,
@@ -570,7 +567,7 @@ class TestProperty13UrlUniquenessUpsertIdempotency:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(
         num_upserts=st.integers(min_value=2, max_value=10),
         sha256=_sha256_strategy,
@@ -639,7 +636,7 @@ class TestProperty14BatchCommitSizeLimit:
         """
         assert _BATCH_SIZE == 500
 
-    @settings(max_examples=30, deadline=None)
+    @settings(deadline=None)
     @given(
         num_entities=st.integers(min_value=1, max_value=1200),
     )
@@ -723,7 +720,7 @@ class TestProperty14BatchCommitSizeLimit:
 
         asyncio.run(_run())
 
-    @settings(max_examples=30, deadline=None)
+    @settings(deadline=None)
     @given(
         num_failed=st.integers(min_value=1, max_value=1200),
     )

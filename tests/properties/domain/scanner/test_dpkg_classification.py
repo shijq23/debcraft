@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
@@ -92,7 +92,6 @@ class TestProperty2DpkgClassificationCorrectness:
     **Validates: Requirements 2.1, 2.2, 2.3, 2.7, 2.9**
     """
 
-    @settings(max_examples=100)
     @given(
         package=st_package_name(),
         version=st_version(),
@@ -115,7 +114,6 @@ class TestProperty2DpkgClassificationCorrectness:
         assert pkg.architecture == architecture
         assert pkg.status == "installed"
 
-    @settings(max_examples=100)
     @given(
         package=st_package_name(),
         version=st_version(),
@@ -138,7 +136,6 @@ class TestProperty2DpkgClassificationCorrectness:
         assert pkg.architecture == architecture
         assert pkg.status == "installed"
 
-    @settings(max_examples=100)
     @given(
         package=st_package_name(),
         version=st_version(),
@@ -161,7 +158,6 @@ class TestProperty2DpkgClassificationCorrectness:
         assert pkg.architecture == architecture
         assert pkg.status == "config-files"
 
-    @settings(max_examples=100)
     @given(
         package=st_package_name(),
         version=st_version(),
@@ -197,7 +193,6 @@ class TestProperty2DpkgClassificationCorrectness:
             f"Stanza:\n{stanza_text}"
         )
 
-    @settings(max_examples=100)
     @given(
         package=st_package_name(),
         version=st_version(),
@@ -233,7 +228,6 @@ class TestProperty2DpkgClassificationCorrectness:
             f"Stanza:\n{stanza_text}"
         )
 
-    @settings(max_examples=100)
     @given(
         package=st_package_name(),
         version=st_version(),

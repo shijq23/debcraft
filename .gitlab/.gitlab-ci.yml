@@ -40,6 +40,8 @@ typecheck:
 unit-tests:
   stage: test
   <<: *setup
+  variables:
+    HYPOTHESIS_PROFILE: ci
   script:
     - uv run pytest
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from debcraft.domain._stanza_parser import parse_stanza_fields_ordered, split_stanzas
 from debcraft.domain.scanner.values import IdentifiedPackage
 
 
@@ -71,14 +72,14 @@ def parse_dpkg_status(content: str) -> DpkgParseResult:
     Returns:
         DpkgParseResult with packages, diagnostics, and raw stanzas.
     """
-    stanza_texts = _split_stanzas(content)
+    stanza_texts = split_stanzas(content)
 
     packages: list[IdentifiedPackage] = []
     diagnostics: list[str] = []
     stanzas: list[DpkgStanza] = []
 
     for index, stanza_text in enumerate(stanza_texts):
-        parsed_fields = _parse_stanza_fields(stanza_text)
+        parsed_fields = parse_stanza_fields_ordered(stanza_text)
         stanza = DpkgStanza(fields=parsed_fields)
         stanzas.append(stanza)
 
@@ -93,76 +94,6 @@ def parse_dpkg_status(content: str) -> DpkgParseResult:
         diagnostics=diagnostics,
         stanzas=stanzas,
     )
-
-
-def _split_stanzas(content: str) -> list[str]:
-    """Split content into stanza text blocks on blank lines.
-
-    A blank line is a line containing only whitespace. One or more consecutive
-    blank lines delimit stanzas. Leading and trailing blank lines are ignored.
-
-    Args:
-        content: The full dpkg status file text.
-
-    Returns:
-        List of non-empty stanza text blocks.
-    """
-    if not content or content.isspace():
-        return []
-
-    stanzas: list[str] = []
-    current_lines: list[str] = []
-
-    for line in content.split("\n"):
-        if line.strip() == "":
-            # Blank line: end current stanza if we have content
-            if current_lines:
-                stanzas.append("\n".join(current_lines))
-                current_lines = []
-        else:
-            current_lines.append(line)
-
-    # Don't forget the last stanza if file doesn't end with blank line
-    if current_lines:
-        stanzas.append("\n".join(current_lines))
-
-    return stanzas
-
-
-def _parse_stanza_fields(stanza_text: str) -> list[tuple[str, str]]:
-    """Parse a single stanza into ordered (field_name, value) pairs.
-
-    Handles continuation lines (leading space/tab) by appending
-    to the previous field value with a newline separator. The leading
-    whitespace character is stripped, preserving the rest of the content.
-
-    Args:
-        stanza_text: Text of a single stanza (no blank lines within).
-
-    Returns:
-        Ordered list of (field_name, field_value) tuples.
-    """
-    fields: list[tuple[str, str]] = []
-
-    for line in stanza_text.split("\n"):
-        if line.startswith(" ") or line.startswith("\t"):
-            # Continuation line: append to preceding field value
-            if fields:
-                name, value = fields[-1]
-                # Strip the leading whitespace character, preserve the rest
-                continuation_content = line[1:]
-                fields[-1] = (name, value + "\n" + continuation_content)
-        elif ":" in line:
-            # Field line: "Field-Name: value" or "Field-Name:"
-            colon_pos = line.index(":")
-            field_name = line[:colon_pos]
-            # Value is everything after ": " (or just ":" if no space follows)
-            field_value = line[colon_pos + 1 :]
-            if field_value.startswith(" "):
-                field_value = field_value[1:]
-            fields.append((field_name, field_value))
-
-    return fields
 
 
 def _classify_package(stanza: DpkgStanza, stanza_index: int) -> tuple[IdentifiedPackage | None, str | None]:

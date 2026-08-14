@@ -64,8 +64,8 @@ _sha256_strategy = st.text(
 # Attempt numbers (0-indexed, up to 2 for 3 max attempts)
 _attempt_strategy = st.integers(min_value=0, max_value=10)
 
-# HTTP 4xx status codes
-_http_4xx_strategy = st.integers(min_value=400, max_value=499)
+# HTTP 4xx status codes (excluding 429 which is HttpRateLimitError)
+_http_4xx_strategy = st.integers(min_value=400, max_value=499).filter(lambda x: x != 429)
 
 # HTTP 5xx status codes
 _http_5xx_strategy = st.integers(min_value=500, max_value=599)
@@ -86,7 +86,6 @@ class TestProperty6SHA256Verification:
     False for any expected hash that differs from the computed hash by at least one character.
     """
 
-    @settings(max_examples=200)
     @given(data=_bytes_strategy)
     def test_correct_hash_is_accepted(self, data: bytes) -> None:
         """**Validates: Requirements 2.5**.
@@ -100,7 +99,6 @@ class TestProperty6SHA256Verification:
         recomputed = hashlib.sha256(data).hexdigest()
         assert computed == recomputed
 
-    @settings(max_examples=200)
     @given(data=_bytes_strategy, wrong_hash=_sha256_strategy)
     def test_incorrect_hash_is_rejected(self, data: bytes, wrong_hash: str) -> None:
         """**Validates: Requirements 2.5**.
@@ -112,7 +110,6 @@ class TestProperty6SHA256Verification:
         assume(wrong_hash != computed)
         assert wrong_hash != computed
 
-    @settings(max_examples=200)
     @given(data=_bytes_strategy)
     def test_single_bit_change_in_hash_is_rejected(self, data: bytes) -> None:
         """**Validates: Requirements 2.5**.
@@ -146,7 +143,6 @@ class TestProperty7AtomicDownloadLifecycle:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -197,7 +193,6 @@ class TestProperty7AtomicDownloadLifecycle:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -248,7 +243,6 @@ class TestProperty7AtomicDownloadLifecycle:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -312,7 +306,6 @@ class TestProperty20ExponentialBackoffDelayBounds:
     the range [base, base * 1.25] where base = min(1 * 2^N, 30).
     """
 
-    @settings(max_examples=200)
     @given(attempt=_attempt_strategy)
     def test_delay_within_bounds(self, attempt: int) -> None:
         """**Validates: Requirements 11.3**.
@@ -327,7 +320,6 @@ class TestProperty20ExponentialBackoffDelayBounds:
         assert delay >= base, f"Delay {delay} is less than base {base} for attempt {attempt}"
         assert delay <= max_delay, f"Delay {delay} exceeds max {max_delay} for attempt {attempt}"
 
-    @settings(max_examples=200)
     @given(attempt=_attempt_strategy)
     def test_delay_never_exceeds_max_with_jitter(self, attempt: int) -> None:
         """**Validates: Requirements 11.3**.
@@ -339,7 +331,6 @@ class TestProperty20ExponentialBackoffDelayBounds:
         # Max base is 30, max jitter is 30 * 0.25 = 7.5, so max total is 37.5
         assert delay <= 37.5
 
-    @settings(max_examples=200)
     @given(attempt=_attempt_strategy)
     def test_delay_is_non_negative(self, attempt: int) -> None:
         """**Validates: Requirements 11.3**.
@@ -366,7 +357,6 @@ class TestProperty21HttpErrorClassification:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -417,7 +407,6 @@ class TestProperty21HttpErrorClassification:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -484,7 +473,6 @@ class TestProperty22SizeMismatchDetection:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -537,7 +525,6 @@ class TestProperty22SizeMismatchDetection:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )

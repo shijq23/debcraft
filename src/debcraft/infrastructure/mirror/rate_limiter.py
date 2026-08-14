@@ -1,7 +1,7 @@
 """Token bucket rate limiter for HTTP request throttling.
 
 Provides an async-compatible rate limiter using the token bucket algorithm
-to control outgoing HTTP request rates, preventing CDN rate-limiting (403)
+to control outgoing HTTP request rates, preventing CDN rate-limiting (429)
 during bulk mirror download operations.
 """
 

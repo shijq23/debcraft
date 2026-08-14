@@ -6,12 +6,15 @@ requires-python = ">=3.13"
 license = "MIT"
 readme = "README.md"
 dependencies = [
-    "typer>=0.12",
+    "aiohttp>=3.9",
+    "aiosqlite>=0.20",
+    "greenlet>=3.5.4",
+    "jsonschema>=4.20",
+    "pycdlib>=1.14",
+    "PySquashfsImage>=0.9",
     "rich>=13.0",
     "sqlalchemy>=2.0",
-    "aiosqlite>=0.20",
-    "aiohttp>=3.9",
-    "greenlet>=3.5.4",
+    "typer>=0.12",
     "zstandard>=0.22",
 ]
 
@@ -27,6 +30,11 @@ qcow2 = "debcraft.infrastructure.scanners.qcow2:QCOW2Scanner"
 img = "debcraft.infrastructure.scanners.img:IMGScanner"
 ami = "debcraft.infrastructure.scanners.ami:AMIScanner"
 
+[project.entry-points."debcraft.sbom_writers"]
+spdx_3_0 = "debcraft.infrastructure.sbom_writers.spdx3:SPDX3Writer"
+spdx_2_3 = "debcraft.infrastructure.sbom_writers.spdx23:SPDX23Writer"
+cyclonedx = "debcraft.infrastructure.sbom_writers.cyclonedx:CycloneDXWriter"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -35,6 +43,7 @@ build-backend = "hatchling.build"
 dev = [
     "ruff>=0.8",
     "basedpyright>=1.20",
+    "pylint>=4.0.7",
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "pytest-asyncio>=0.24",
@@ -42,7 +51,7 @@ dev = [
     "hypothesis>=6.100",
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
-    "mkdocstrings[python]>=0.26",
+    "mkdocstrings[python]>=1.0.6",
     "import-linter>=2.0",
     "bandit>=1.7",
     "pre-commit>=3.8",
@@ -106,8 +115,38 @@ extend-ignore = ["E203", "W503"]
 # Pylint Configuration
 # =============================================================================
 
+[tool.pylint.main]
+source-roots = ["src"]
+jobs = 0
+py-version = "3.13"
+fail-under = 9.90
+
 [tool.pylint.format]
 max-line-length = 120
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-instance-attributes",
+    "fixme",
+    "import-error",
+    "unnecessary-ellipsis",
+    "import-outside-toplevel",
+    "redefined-builtin",
+]
+
+[tool.pylint.design]
+max-args = 8
+max-returns = 8
+max-locals = 20
+
+[tool.pylint.similarities]
+min-similarity-lines = 8
+ignore-imports = true
 
 # =============================================================================
 # BasedPyright Configuration
@@ -138,9 +177,13 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["tests.*"]
+module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+module = ["pycdlib.*", "PySquashfsImage.*", "PySquashfsImage"]
+ignore_missing_imports = true
 
 # =============================================================================
 # Pytest Configuration
@@ -166,6 +209,7 @@ markers = [
     "benchmark: Performance benchmark tests",
     "regression: Regression tests for fixed bugs",
     "e2e: End-to-end tests",
+    "property: Property-based tests (Hypothesis)",
     # Feature markers
     "repository: Repository operations",
     "package: Package analysis",

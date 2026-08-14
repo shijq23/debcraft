@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -83,7 +83,6 @@ class TestAutoIncrementingSurrogateKeys:
     assigned in strictly ascending order within a single session.
     """
 
-    @settings(max_examples=200)
     @given(entities_data=_unique_source_packages_strategy())
     def test_ids_unique_and_strictly_ascending(
         self,

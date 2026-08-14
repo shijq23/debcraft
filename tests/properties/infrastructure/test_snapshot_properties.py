@@ -14,7 +14,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import (
@@ -123,7 +123,6 @@ class TestProperty15SnapshotPublicationAtomicity:
     transaction; IF the transaction fails, THEN no partial snapshot remains.
     """
 
-    @settings(max_examples=50)
     @given(
         verified_count=_verified_count_strategy,
         failed_count=_failed_count_strategy,
@@ -181,7 +180,6 @@ class TestProperty15SnapshotPublicationAtomicity:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50)
     @given(
         verified_count=_verified_count_strategy,
         failed_count=_failed_count_strategy,

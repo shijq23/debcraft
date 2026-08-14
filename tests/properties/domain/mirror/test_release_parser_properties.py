@@ -19,7 +19,7 @@ FileEntry output.
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.errors import ReleaseParseError
@@ -171,7 +171,6 @@ class TestProperty1ReleaseParsingRoundTrip:
     parsed entries equals the count of lines in the SHA256Sums section.
     """
 
-    @settings(max_examples=200)
     @given(data=_valid_release_content())
     def test_parsed_entry_count_matches_input_lines(self, data: tuple[str, list[tuple[str, int, str]]]) -> None:
         """Number of parsed FileEntry objects equals input SHA256 line count."""
@@ -181,7 +180,6 @@ class TestProperty1ReleaseParsingRoundTrip:
 
         assert len(result.files) == len(entries), f"Expected {len(entries)} entries, got {len(result.files)}"
 
-    @settings(max_examples=200)
     @given(data=_valid_release_content())
     def test_parsed_sha256_matches_input(self, data: tuple[str, list[tuple[str, int, str]]]) -> None:
         """Each parsed entry's sha256 matches the corresponding input hash."""
@@ -194,7 +192,6 @@ class TestProperty1ReleaseParsingRoundTrip:
                 f"Entry {i}: expected hash '{expected_hash}', got '{result.files[i].sha256}'"
             )
 
-    @settings(max_examples=200)
     @given(data=_valid_release_content())
     def test_parsed_size_bytes_matches_input(self, data: tuple[str, list[tuple[str, int, str]]]) -> None:
         """Each parsed entry's size_bytes matches the corresponding input size."""
@@ -207,7 +204,6 @@ class TestProperty1ReleaseParsingRoundTrip:
                 f"Entry {i}: expected size {expected_size}, got {result.files[i].size_bytes}"
             )
 
-    @settings(max_examples=200)
     @given(data=_valid_release_content())
     def test_parsed_relative_path_matches_input(self, data: tuple[str, list[tuple[str, int, str]]]) -> None:
         """Each parsed entry's relative_path matches the corresponding input path."""
@@ -220,7 +216,6 @@ class TestProperty1ReleaseParsingRoundTrip:
                 f"Entry {i}: expected path '{expected_path}', got '{result.files[i].relative_path}'"
             )
 
-    @settings(max_examples=200)
     @given(data=_valid_release_content())
     def test_result_is_release_metadata(self, data: tuple[str, list[tuple[str, int, str]]]) -> None:
         """Parsing valid content always returns a ReleaseMetadata instance."""
@@ -247,7 +242,6 @@ class TestProperty2MalformedContentRejected:
     FileEntry output.
     """
 
-    @settings(max_examples=200)
     @given(content=_string_without_sha256_header())
     def test_no_sha256_header_raises_error(self, content: str) -> None:
         """Content without SHA256:/SHA256Sums: header raises ReleaseParseError."""
@@ -255,7 +249,6 @@ class TestProperty2MalformedContentRejected:
         with pytest.raises(ReleaseParseError):
             parser.parse(content, url="http://test/Release")
 
-    @settings(max_examples=200)
     @given(content=_empty_sha256_section())
     def test_empty_sha256_section_raises_error(self, content: str) -> None:
         """SHA256 header with no valid indented entries raises ReleaseParseError."""
@@ -263,7 +256,6 @@ class TestProperty2MalformedContentRejected:
         with pytest.raises(ReleaseParseError):
             parser.parse(content, url="http://test/Release")
 
-    @settings(max_examples=200)
     @given(content=_whitespace_only())
     def test_whitespace_only_raises_error(self, content: str) -> None:
         """Whitespace-only or empty content raises ReleaseParseError."""
@@ -271,7 +263,6 @@ class TestProperty2MalformedContentRejected:
         with pytest.raises(ReleaseParseError):
             parser.parse(content, url="http://test/Release")
 
-    @settings(max_examples=200)
     @given(content=st.just(""))
     def test_empty_string_raises_error(self, content: str) -> None:
         """Empty string raises ReleaseParseError."""
@@ -279,7 +270,6 @@ class TestProperty2MalformedContentRejected:
         with pytest.raises(ReleaseParseError):
             parser.parse(content, url="http://test/Release")
 
-    @settings(max_examples=200)
     @given(
         header=st.sampled_from(["SHA256:", "SHA256Sums:"]),
         bad_entries=st.lists(

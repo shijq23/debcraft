@@ -186,7 +186,6 @@ class TestPreservationSyncResultUpToDate:
     """
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -254,7 +253,6 @@ class TestPreservationSyncResultWithDbFailure:
     """
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -317,7 +315,6 @@ class TestPreservationCancellationReturnsPartialResults:
     """
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -383,7 +380,6 @@ class TestPreservationSyncResultMatchesPipelineAccumulation:
     """
 
     @settings(
-        max_examples=100,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

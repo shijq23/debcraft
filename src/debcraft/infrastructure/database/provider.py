@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.sql import text
 
 from debcraft.infrastructure.database.session import (
@@ -173,7 +173,7 @@ class SqliteDatabaseProvider(DatabaseProvider):
                 # Engine not yet created — try to create it for health check
                 try:
                     self._get_or_create_engine(db_name)
-                except Exception:
+                except (SQLAlchemyError, OSError):
                     results[db_name] = False
                     continue
 
@@ -182,7 +182,7 @@ class SqliteDatabaseProvider(DatabaseProvider):
                 async with engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
                 results[db_name] = True
-            except Exception:
+            except SQLAlchemyError:
                 results[db_name] = False
 
         return results

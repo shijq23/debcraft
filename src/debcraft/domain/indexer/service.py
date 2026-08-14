@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from debcraft.domain.indexer.contents_parser import ContentsParser
+from debcraft.domain.indexer.errors import ReleaseParseError
 from debcraft.domain.indexer.events import (
     IndexingCompleted,
     IndexingFailed,
@@ -23,6 +24,7 @@ from debcraft.domain.indexer.values import IndexResult
 
 if TYPE_CHECKING:
     from debcraft.domain.indexer.ports import (
+        FileInfo,
         FileReader,
         IndexingRecordView,
         MetadataRepository,
@@ -70,7 +72,7 @@ def _infer_file_type(url_or_path: str) -> str:
         return "sources"
     if lowered.startswith("contents"):
         return "contents"
-    if lowered == "release" or lowered == "inrelease":
+    if lowered in ("release", "inrelease"):
         return "release"
     return "unknown"
 
@@ -159,21 +161,17 @@ class IndexerService:
         files_skipped = 0
 
         try:
-            # Step 1: Find or create repository
+            # Steps 1-3: Initialize repository and snapshot
             repository_id = await self._metadata_repository.find_or_create_repository(
                 name=repository_name,
                 base_url=base_url,
                 suite=suite,
                 component=component,
             )
-
-            # Step 2: Create unpublished snapshot
             snapshot_id = await self._metadata_repository.create_snapshot(
                 repository_id=repository_id,
                 schema_version=_SCHEMA_VERSION,
             )
-
-            # Step 3: Publish IndexingStarted event
             await self._event_bus.publish(
                 IndexingStarted(
                     repository_name=repository_name,
@@ -185,28 +183,7 @@ class IndexerService:
             verified_files = await self._mirror_file_repository.get_verified_files(repository_name=repository_name)
 
             if not verified_files:
-                self._logger.info(
-                    "No verified files to index for repository %s",
-                    repository_name,
-                )
-                # Still publish the snapshot (empty but valid)
-                await self._metadata_repository.publish_snapshot(snapshot_id)
-                await self._event_bus.publish(
-                    IndexingCompleted(
-                        repository_name=repository_name,
-                        snapshot_id=snapshot_id,
-                        packages_indexed=0,
-                    )
-                )
-                return IndexResult(
-                    repository_name=repository_name,
-                    snapshot_id=snapshot_id,
-                    packages_indexed=0,
-                    source_packages_indexed=0,
-                    file_ownerships_indexed=0,
-                    files_skipped=0,
-                    success=True,
-                )
+                return await self._finalize_empty_snapshot(repository_name, snapshot_id)
 
             # Step 5: Sort files deterministically
             sorted_files = sorted(
@@ -220,82 +197,14 @@ class IndexerService:
 
             # Step 6: Process each file
             for file_info in sorted_files:
-                try:
-                    file_type = _infer_file_type(file_info.url)
+                counts = await self._process_single_file(file_info, base_url, snapshot_id)
+                packages_indexed += counts[0]
+                source_packages_indexed += counts[1]
+                file_ownerships_indexed += counts[2]
+                files_skipped += counts[3]
 
-                    # Step 6a: Incremental indexing check
-                    parser_version = self._get_parser_version(file_type)
-                    indexing_record = await self._mirror_file_repository.get_indexing_record(file_info.id)
-
-                    if self._should_skip(indexing_record, file_info.sha256, parser_version):
-                        files_skipped += 1
-                        self._logger.debug(
-                            "Skipping already-indexed file: %s",
-                            file_info.url,
-                        )
-                        continue
-
-                    # Skip unknown file types before any I/O
-                    if file_type == "unknown":
-                        self._logger.debug("Skipping unknown file type: %s", file_info.url)
-                        continue
-
-                    # Step 6b: Read file content
-                    content = await self._file_reader.read_file(file_info.local_path)
-
-                    # Steps 6c-6e: Parse and persist based on file type
-                    if file_type == "packages":
-                        packages = self._packages_parser.parse(content)
-                        # Compute download URLs
-                        packages_with_urls = []
-                        for pkg in packages:
-                            download_url = _compute_download_url(base_url, pkg.filename)
-                            packages_with_urls.append((pkg, download_url))
-
-                        count = await self._metadata_repository.add_package_instances(
-                            snapshot_id=snapshot_id,
-                            packages=packages,
-                            base_url=base_url,
-                        )
-                        packages_indexed += count
-
-                    elif file_type == "sources":
-                        source_packages = self._sources_parser.parse(content)
-                        count = await self._metadata_repository.add_source_packages(
-                            packages=source_packages,
-                        )
-                        source_packages_indexed += count
-
-                    elif file_type == "contents":
-                        ownerships = self._contents_parser.parse(content)
-                        count = await self._metadata_repository.replace_file_ownerships(
-                            snapshot_id=snapshot_id,
-                            ownerships=ownerships,
-                        )
-                        file_ownerships_indexed += count
-
-                    elif file_type == "release":
-                        # Release files provide repository identity metadata
-                        # but don't produce persistable records themselves
-                        self._release_metadata_parser.parse(content)
-                        self._logger.debug("Parsed Release metadata from: %s", file_info.url)
-
-                    # Step 6f: Mark file as indexed
-                    await self._mirror_file_repository.mark_indexed(
-                        file_id=file_info.id,
-                        parser_version=parser_version,
-                        sha256=file_info.sha256,
-                    )
-
-                except Exception:
-                    self._logger.exception("Error processing file: %s", file_info.url)
-                    # Allow other files to proceed
-                    continue
-
-            # Step 7: Publish snapshot
+            # Steps 7-8: Publish snapshot and completion event
             await self._metadata_repository.publish_snapshot(snapshot_id)
-
-            # Step 8: Publish IndexingCompleted event
             await self._event_bus.publish(
                 IndexingCompleted(
                     repository_name=repository_name,
@@ -313,11 +222,9 @@ class IndexerService:
                 files_skipped,
             )
 
-        except Exception as exc:
+        except (OSError, ValueError, KeyError, TypeError) as exc:
             error_msg = f"Indexing failed for {repository_name}: {exc}"
             self._logger.exception(error_msg)
-
-            # Publish failure event
             await self._event_bus.publish(
                 IndexingFailed(
                     repository_name=repository_name,
@@ -325,7 +232,6 @@ class IndexerService:
                     error=str(exc),
                 )
             )
-
             return IndexResult(
                 repository_name=repository_name,
                 snapshot_id=snapshot_id,
@@ -347,6 +253,146 @@ class IndexerService:
             files_skipped=files_skipped,
             success=True,
         )
+
+    async def _finalize_empty_snapshot(
+        self,
+        repository_name: str,
+        snapshot_id: int,
+    ) -> IndexResult:
+        """Publish an empty-but-valid snapshot when no files are available.
+
+        Args:
+            repository_name: Name of the repository being indexed.
+            snapshot_id: The snapshot to publish.
+
+        Returns:
+            IndexResult with zero counts and success=True.
+        """
+        self._logger.info(
+            "No verified files to index for repository %s",
+            repository_name,
+        )
+        await self._metadata_repository.publish_snapshot(snapshot_id)
+        await self._event_bus.publish(
+            IndexingCompleted(
+                repository_name=repository_name,
+                snapshot_id=snapshot_id,
+                packages_indexed=0,
+            )
+        )
+        return IndexResult(
+            repository_name=repository_name,
+            snapshot_id=snapshot_id,
+            packages_indexed=0,
+            source_packages_indexed=0,
+            file_ownerships_indexed=0,
+            files_skipped=0,
+            success=True,
+        )
+
+    async def _process_single_file(
+        self,
+        file_info: FileInfo,
+        base_url: str,
+        snapshot_id: int,
+    ) -> tuple[int, int, int, int]:
+        """Process a single verified file: parse and persist its contents.
+
+        Args:
+            file_info: A verified file record with url, id, sha256, local_path.
+            base_url: Base URL for computing download URLs.
+            snapshot_id: The snapshot being built.
+
+        Returns:
+            Tuple of (packages, source_packages, file_ownerships, skipped).
+        """
+        try:
+            file_type = _infer_file_type(file_info.url)
+
+            # Incremental indexing check
+            parser_version = self._get_parser_version(file_type)
+            indexing_record = await self._mirror_file_repository.get_indexing_record(file_info.id)
+
+            if self._should_skip(indexing_record, file_info.sha256, parser_version):
+                self._logger.debug(
+                    "Skipping already-indexed file: %s",
+                    file_info.url,
+                )
+                return (0, 0, 0, 1)
+
+            # Skip unknown file types before any I/O
+            if file_type == "unknown":
+                self._logger.debug("Skipping unknown file type: %s", file_info.url)
+                return (0, 0, 0, 0)
+
+            # Read file content
+            content = await self._file_reader.read_file(file_info.local_path)
+
+            # Parse and persist based on file type
+            counts = await self._parse_and_persist(file_type, content, base_url, snapshot_id, file_info.url)
+
+            # Mark file as indexed
+            await self._mirror_file_repository.mark_indexed(
+                file_id=file_info.id,
+                parser_version=parser_version,
+                sha256=file_info.sha256,
+            )
+
+            return counts
+
+        except (OSError, ValueError, KeyError, ReleaseParseError):
+            self._logger.exception("Error processing file: %s", file_info.url)
+            return (0, 0, 0, 0)
+
+    async def _parse_and_persist(
+        self,
+        file_type: str,
+        content: str,
+        base_url: str,
+        snapshot_id: int,
+        url: str,
+    ) -> tuple[int, int, int, int]:
+        """Parse file content and persist domain objects based on file type.
+
+        Args:
+            file_type: One of "packages", "sources", "contents", "release".
+            content: The decompressed file content.
+            base_url: Base URL for computing download URLs.
+            snapshot_id: The snapshot being built.
+            url: URL of the file being parsed (for logging).
+
+        Returns:
+            Tuple of (packages, source_packages, file_ownerships, skipped).
+        """
+        if file_type == "packages":
+            packages = self._packages_parser.parse(content)
+            count = await self._metadata_repository.add_package_instances(
+                snapshot_id=snapshot_id,
+                packages=packages,
+                base_url=base_url,
+            )
+            return (count, 0, 0, 0)
+
+        if file_type == "sources":
+            source_packages = self._sources_parser.parse(content)
+            count = await self._metadata_repository.add_source_packages(
+                packages=source_packages,
+            )
+            return (0, count, 0, 0)
+
+        if file_type == "contents":
+            ownerships = self._contents_parser.parse(content)
+            count = await self._metadata_repository.replace_file_ownerships(
+                snapshot_id=snapshot_id,
+                ownerships=ownerships,
+            )
+            return (0, 0, count, 0)
+
+        if file_type == "release":
+            self._release_metadata_parser.parse(content)
+            self._logger.debug("Parsed Release metadata from: %s", url)
+
+        return (0, 0, 0, 0)
 
     def _get_parser_version(self, file_type: str) -> int:
         """Get the parser version for a given file type.

@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.storage.engine import DefaultStorageEngine
@@ -58,7 +58,6 @@ class TestTemporaryFileCleanupProperty:
     all ``.tmp``/``tmp_`` files are removed and all other files remain untouched.
     """
 
-    @settings(max_examples=200)
     @given(
         file_specs=st.lists(
             st.tuples(

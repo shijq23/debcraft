@@ -281,7 +281,6 @@ class TestBugConditionIndexedFilesInvisible:
     """
 
     @pytest.mark.asyncio
-    @settings(max_examples=50)
     @given(
         url=_metadata_url_strategy(),
         sha256=_sha256_strategy(),
@@ -359,7 +358,6 @@ class TestPreservationProperties:
     """
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -408,7 +406,6 @@ class TestPreservationProperties:
         )
 
     @settings(
-        max_examples=50,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

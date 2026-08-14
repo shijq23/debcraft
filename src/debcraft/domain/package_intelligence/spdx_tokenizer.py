@@ -27,6 +27,58 @@ _LICENSE_REF_RE = re.compile(r"LicenseRef-[A-Za-z0-9\-.]+", re.IGNORECASE)
 class SPDXTokenizer:
     """Tokenizes SPDX license expression strings."""
 
+    def _try_document_ref(self, expression: str, pos: int, tokens: list[SPDXToken]) -> int | None:
+        """Try to match a DocumentRef-xxx:LicenseRef-yyy at pos.
+
+        Returns new position if matched, None otherwise.
+        """
+        doc_ref_match = _DOCUMENT_REF_RE.match(expression, pos)
+        if doc_ref_match:
+            value = doc_ref_match.group(0)
+            tokens.append(SPDXToken(SPDXTokenType.DOCUMENT_REF, value, pos))
+            return pos + len(value)
+        return None
+
+    def _try_license_ref(self, expression: str, pos: int, tokens: list[SPDXToken]) -> int | None:
+        """Try to match a LicenseRef-xxx at pos.
+
+        Returns new position if matched, None otherwise.
+        """
+        license_ref_match = _LICENSE_REF_RE.match(expression, pos)
+        if license_ref_match:
+            value = license_ref_match.group(0)
+            tokens.append(SPDXToken(SPDXTokenType.LICENSE_REF, value, pos))
+            return pos + len(value)
+        return None
+
+    def _consume_identifier(self, expression: str, pos: int, length: int, tokens: list[SPDXToken]) -> int:
+        """Consume an identifier or operator starting at pos.
+
+        Handles AND/OR/WITH operators, or-later (+) suffix, and plain
+        license identifiers. Returns the new position after consumption.
+        """
+        start = pos
+        while pos < length and _IDENT_CHAR_RE.match(expression[pos]):
+            pos += 1
+
+        value = expression[start:pos]
+        upper_value = value.upper()
+
+        # Check for operators (case-insensitive)
+        if upper_value == "AND":
+            tokens.append(SPDXToken(SPDXTokenType.AND, value, start))
+        elif upper_value == "OR":
+            tokens.append(SPDXToken(SPDXTokenType.OR, value, start))
+        elif upper_value == "WITH":
+            tokens.append(SPDXToken(SPDXTokenType.WITH, value, start))
+        elif pos < length and expression[pos] == "+":
+            tokens.append(SPDXToken(SPDXTokenType.OR_LATER, value, start))
+            pos += 1
+        else:
+            tokens.append(SPDXToken(SPDXTokenType.LICENSE_ID, value, start))
+
+        return pos
+
     def tokenize(self, expression: str) -> list[SPDXToken]:
         """Convert expression string to typed token sequence.
 
@@ -44,7 +96,7 @@ class SPDXTokenizer:
             char = expression[pos]
 
             # Skip whitespace
-            if char == " " or char == "\t":
+            if char in (" ", "\t"):
                 pos += 1
                 continue
 
@@ -60,44 +112,20 @@ class SPDXTokenizer:
                 continue
 
             # Try DocumentRef-xxx:LicenseRef-yyy first (must precede LicenseRef)
-            doc_ref_match = _DOCUMENT_REF_RE.match(expression, pos)
-            if doc_ref_match:
-                value = doc_ref_match.group(0)
-                tokens.append(SPDXToken(SPDXTokenType.DOCUMENT_REF, value, pos))
-                pos += len(value)
+            new_pos = self._try_document_ref(expression, pos, tokens)
+            if new_pos is not None:
+                pos = new_pos
                 continue
 
             # Try LicenseRef-xxx
-            license_ref_match = _LICENSE_REF_RE.match(expression, pos)
-            if license_ref_match:
-                value = license_ref_match.group(0)
-                tokens.append(SPDXToken(SPDXTokenType.LICENSE_REF, value, pos))
-                pos += len(value)
+            new_pos = self._try_license_ref(expression, pos, tokens)
+            if new_pos is not None:
+                pos = new_pos
                 continue
 
             # Identifier or operator: must start with a letter or digit
             if _IDENT_CHAR_RE.match(char):
-                start = pos
-                while pos < length and _IDENT_CHAR_RE.match(expression[pos]):
-                    pos += 1
-
-                value = expression[start:pos]
-                upper_value = value.upper()
-
-                # Check for operators (case-insensitive)
-                if upper_value == "AND":
-                    tokens.append(SPDXToken(SPDXTokenType.AND, value, start))
-                elif upper_value == "OR":
-                    tokens.append(SPDXToken(SPDXTokenType.OR, value, start))
-                elif upper_value == "WITH":
-                    tokens.append(SPDXToken(SPDXTokenType.WITH, value, start))
-                else:
-                    # Check for or-later suffix (+)
-                    if pos < length and expression[pos] == "+":
-                        tokens.append(SPDXToken(SPDXTokenType.OR_LATER, value, start))
-                        pos += 1
-                    else:
-                        tokens.append(SPDXToken(SPDXTokenType.LICENSE_ID, value, start))
+                pos = self._consume_identifier(expression, pos, length, tokens)
                 continue
 
             # Invalid character

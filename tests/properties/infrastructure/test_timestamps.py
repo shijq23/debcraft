@@ -14,7 +14,7 @@ import asyncio
 from datetime import datetime
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -86,7 +86,6 @@ class TestTimestampInvariants:
     old updated_at, and created_at remains unchanged.
     """
 
-    @settings(max_examples=200)
     @given(data=_source_package_strategy())
     def test_created_at_equals_updated_at_after_insert(
         self,
@@ -119,7 +118,6 @@ class TestTimestampInvariants:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         data=_source_package_strategy(),
         new_maintainer=st.one_of(st.none(), _safe_name()),

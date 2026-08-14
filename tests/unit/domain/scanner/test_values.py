@@ -3,6 +3,8 @@
 Tests frozen behavior (immutability), required fields, default values, and enum membership.
 """
 
+from __future__ import annotations
+
 import dataclasses
 
 import pytest
@@ -16,6 +18,7 @@ from debcraft.domain.scanner.values import (
     PackageEnrichment,
     ScanningStrategy,
     ScanResult,
+    detect_artifact_type,
 )
 
 
@@ -347,3 +350,78 @@ class TestScanResult:
                 diagnostics=[],
                 duration_seconds=0.0,
             )
+
+
+@pytest.mark.unit
+class TestDetectArtifactType:
+    """Verify detect_artifact_type maps extensions and directories correctly."""
+
+    # --- Known single extensions ---
+
+    def test_iso_extension(self):
+        """A .iso file is detected as ArtifactType.ISO."""
+        assert detect_artifact_type("/path/to/image.iso") == ArtifactType.ISO
+
+    def test_qcow2_extension(self):
+        """A .qcow2 file is detected as ArtifactType.QCOW2."""
+        assert detect_artifact_type("/path/to/disk.qcow2") == ArtifactType.QCOW2
+
+    def test_img_extension(self):
+        """A .img file is detected as ArtifactType.IMG."""
+        assert detect_artifact_type("/path/to/disk.img") == ArtifactType.IMG
+
+    def test_tar_extension(self):
+        """A .tar file is detected as ArtifactType.DOCKER."""
+        assert detect_artifact_type("/path/to/container.tar") == ArtifactType.DOCKER
+
+    def test_tgz_extension(self):
+        """A .tgz file is detected as ArtifactType.DOCKER."""
+        assert detect_artifact_type("/path/to/container.tgz") == ArtifactType.DOCKER
+
+    def test_oci_extension(self):
+        """A .oci file is detected as ArtifactType.OCI."""
+        assert detect_artifact_type("/path/to/bundle.oci") == ArtifactType.OCI
+
+    def test_ami_extension(self):
+        """A .ami file is detected as ArtifactType.AMI."""
+        assert detect_artifact_type("/path/to/machine.ami") == ArtifactType.AMI
+
+    # --- Compound extensions ---
+
+    def test_tar_gz_compound_extension(self):
+        """A .tar.gz file is detected as ArtifactType.DOCKER."""
+        assert detect_artifact_type("/path/to/container.tar.gz") == ArtifactType.DOCKER
+
+    def test_tar_gz_with_name_prefix(self):
+        """A file like archive.tar.gz is detected as DOCKER."""
+        assert detect_artifact_type("my-image.tar.gz") == ArtifactType.DOCKER
+
+    # --- Directory detection ---
+
+    def test_directory_path(self, tmp_path):
+        """An actual directory is detected as ArtifactType.DIRECTORY."""
+        assert detect_artifact_type(str(tmp_path)) == ArtifactType.DIRECTORY
+
+    # --- Fallback for unknown extensions ---
+
+    def test_unknown_extension_falls_back_to_directory(self):
+        """An unrecognized extension falls back to ArtifactType.DIRECTORY."""
+        assert detect_artifact_type("/path/to/file.xyz") == ArtifactType.DIRECTORY
+
+    def test_no_extension_falls_back_to_directory(self):
+        """A path with no extension (and not an existing directory) falls back to DIRECTORY."""
+        assert detect_artifact_type("/nonexistent/path/noext") == ArtifactType.DIRECTORY
+
+    # --- Case insensitivity ---
+
+    def test_uppercase_iso_extension(self):
+        """Extension matching is case-insensitive (.ISO maps to ISO)."""
+        assert detect_artifact_type("/path/to/IMAGE.ISO") == ArtifactType.ISO
+
+    def test_mixed_case_qcow2_extension(self):
+        """Extension matching is case-insensitive (.Qcow2 maps to QCOW2)."""
+        assert detect_artifact_type("/path/to/disk.Qcow2") == ArtifactType.QCOW2
+
+    def test_uppercase_tar_gz_extension(self):
+        """Compound extension matching is case-insensitive (.TAR.GZ maps to DOCKER)."""
+        assert detect_artifact_type("/path/to/image.TAR.GZ") == ArtifactType.DOCKER

@@ -165,7 +165,7 @@ class LicenseMapper:
             return self._apply_truncation_note(result, truncated)
 
         # 5. LicenseTextHash: SHA-256 hash of license text (stub for now)
-        result = self._try_license_text_hash(license_text)
+        result = self._try_license_text_hash(license_text)  # pylint: disable=assignment-from-none
         if result is not None:
             return self._apply_truncation_note(result, truncated)
 
@@ -233,7 +233,7 @@ class LicenseMapper:
             )
         return None
 
-    def _try_license_text_hash(self, license_text: str | None) -> LicenseMappingResult | None:
+    def _try_license_text_hash(self, _license_text: str | None) -> LicenseMappingResult | None:
         """Try SHA-256 hash matching against known license texts.
 
         Note: Full text hash table not yet available. This is a stub that

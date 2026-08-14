@@ -28,7 +28,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.config import MirrorConfig
-from debcraft.infrastructure.mirror.download import DownloadCoordinator
+from debcraft.infrastructure.mirror.download import DownloadCoordinator, DownloadSpec
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -78,7 +78,6 @@ class TestProperty1RateLimiterIntegrationBugCondition:
     """
 
     @settings(
-        max_examples=200,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -118,7 +117,6 @@ class TestProperty1RateLimiterIntegrationBugCondition:
         coordinator._connector = None
 
     @settings(
-        max_examples=200,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -157,7 +155,6 @@ class TestProperty1RateLimiterIntegrationBugCondition:
         coordinator._connector = None
 
     @settings(
-        max_examples=200,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -199,7 +196,6 @@ class TestProperty1RateLimiterIntegrationBugCondition:
         coordinator._connector = None
 
     @settings(
-        max_examples=200,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -270,9 +266,11 @@ class TestProperty1RateLimiterIntegrationBugCondition:
             await coordinator._attempt_download(
                 url="http://example.com/test.deb",
                 dest_path=Path("/tmp/test.deb"),
-                expected_sha256="",
-                expected_size=0,
-                timeout=30,
+                spec=DownloadSpec(
+                    expected_sha256="",
+                    expected_size=0,
+                    timeout=30,
+                ),
                 attempt=0,
             )
 
@@ -286,7 +284,6 @@ class TestProperty1RateLimiterIntegrationBugCondition:
         )
 
     @settings(
-        max_examples=200,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

@@ -37,7 +37,7 @@ Property 12: PackagesParser Invalid Stanza Isolation
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.packages_parser import PackagesParser
@@ -246,7 +246,6 @@ class TestProperty5ParserIdempotency:
     same order, same element values).
     """
 
-    @settings(max_examples=200)
     @given(content=_arbitrary_content())
     def test_parse_idempotent_arbitrary_content(self, content: str) -> None:
         """parse(content) == parse(content) for arbitrary content.
@@ -258,7 +257,6 @@ class TestProperty5ParserIdempotency:
         result2 = parser.parse(content)
         assert result1 == result2
 
-    @settings(max_examples=200)
     @given(content=_valid_packages_content())
     def test_parse_idempotent_valid_packages_content(self, content: str) -> None:
         """parse(content) == parse(content) for valid Packages content.
@@ -285,7 +283,6 @@ class TestProperty6OutputValidity:
     SHALL have non-empty relative_path, non-empty sha256, and size_bytes >= 0.
     """
 
-    @settings(max_examples=200)
     @given(content=_packages_content())
     def test_all_entries_have_valid_fields(self, content: str) -> None:
         """All returned entries have non-empty relative_path, non-empty sha256, size_bytes >= 0.
@@ -314,7 +311,6 @@ class TestProperty7StanzaCountBound:
     SHALL be less than or equal to the number of stanzas in the input.
     """
 
-    @settings(max_examples=200)
     @given(content=_packages_content())
     def test_result_count_bounded_by_stanza_count(self, content: str) -> None:
         """len(parse(content)) <= stanza_count(content).
@@ -340,7 +336,6 @@ class TestProperty8Monotonicity:
     Appending a valid stanza to content does not decrease result count.
     """
 
-    @settings(max_examples=200)
     @given(content=_packages_content(), stanza=_valid_packages_stanza())
     def test_appending_valid_stanza_does_not_decrease_count(self, content: str, stanza: str) -> None:
         """Appending a valid stanza does not decrease result count.
@@ -357,7 +352,6 @@ class TestProperty8Monotonicity:
             f"Appending valid stanza decreased count from {original_count} to {new_count}"
         )
 
-    @settings(max_examples=200)
     @given(stanza=_valid_packages_stanza())
     def test_single_valid_stanza_returns_at_least_one_entry(self, stanza: str) -> None:
         """Parsing a single valid stanza returns at least 1 entry.
@@ -383,7 +377,6 @@ class TestProperty9RoundTrip:
     SHALL recover those exact values.
     """
 
-    @settings(max_examples=200)
     @given(fields=_valid_file_entry_fields())
     def test_round_trip_recovers_original_values(self, fields: tuple[str, str, int]) -> None:
         """Constructing a stanza from known values and parsing recovers those exact values.
@@ -417,7 +410,6 @@ class TestProperty10MissingFieldRejection:
     PackagesParser.parse SHALL return an empty list.
     """
 
-    @settings(max_examples=200)
     @given(stanza=_stanza_missing_field(excluded_field="Filename"))
     def test_missing_filename_produces_no_entries(self, stanza: str) -> None:
         """Stanzas missing Filename produce no entries.
@@ -428,7 +420,6 @@ class TestProperty10MissingFieldRejection:
         entries = parser.parse(stanza)
         assert entries == [], f"Expected no entries for stanza missing Filename, got {len(entries)}"
 
-    @settings(max_examples=200)
     @given(stanza=_stanza_missing_field(excluded_field="SHA256"))
     def test_missing_sha256_produces_no_entries(self, stanza: str) -> None:
         """Stanzas missing SHA256 produce no entries.
@@ -439,7 +430,6 @@ class TestProperty10MissingFieldRejection:
         entries = parser.parse(stanza)
         assert entries == [], f"Expected no entries for stanza missing SHA256, got {len(entries)}"
 
-    @settings(max_examples=200)
     @given(stanza=_stanza_missing_field(excluded_field="Size"))
     def test_missing_size_produces_no_entries(self, stanza: str) -> None:
         """Stanzas missing Size produce no entries.
@@ -505,7 +495,6 @@ class TestProperty11InvalidSizeRejection:
     PackagesParser.parse SHALL return an empty list.
     """
 
-    @settings(max_examples=200)
     @given(stanza=_stanza_with_non_integer_size())
     def test_non_integer_size_produces_no_entries(self, stanza: str) -> None:
         """Stanzas with non-integer Size produce no entries.
@@ -516,7 +505,6 @@ class TestProperty11InvalidSizeRejection:
         entries = parser.parse(stanza)
         assert entries == [], f"Expected no entries for non-integer Size, got {len(entries)}"
 
-    @settings(max_examples=200)
     @given(stanza=_stanza_with_negative_size())
     def test_negative_size_produces_no_entries(self, stanza: str) -> None:
         """Stanzas with negative Size produce no entries.
@@ -543,7 +531,6 @@ class TestProperty12InvalidStanzaIsolation:
     FileEntry corresponding to the valid stanza only.
     """
 
-    @settings(max_examples=200)
     @given(
         invalid_stanza=_stanza_missing_field(excluded_field="Filename"),
         valid_stanza=_valid_packages_stanza(),

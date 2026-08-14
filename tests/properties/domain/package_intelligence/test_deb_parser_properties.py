@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.deb_parser import DebParser
@@ -227,7 +227,6 @@ class TestProperty17ControlFileFieldExtraction:
     **Validates: Requirements 1.10**
     """
 
-    @settings(max_examples=100)
     @given(data=control_file_text())
     def test_all_fields_extracted_with_exact_values(self, data: tuple[dict[str, str], str]) -> None:
         """Each field in the control text is extracted with its exact value."""
@@ -248,7 +247,6 @@ class TestProperty17ControlFileFieldExtraction:
                 f"Input text:\n{text!r}"
             )
 
-    @settings(max_examples=100)
     @given(data=control_file_text())
     def test_no_extra_fields_beyond_input(self, data: tuple[dict[str, str], str]) -> None:
         """Parser does not invent fields that are not in the input."""
@@ -283,7 +281,6 @@ class TestProperty18DependencyStringParsingPreservation:
     **Validates: Requirements 1.11**
     """
 
-    @settings(max_examples=100)
     @given(data=dependency_string_with_expected())
     def test_dependency_package_names_preserved(
         self,
@@ -306,7 +303,6 @@ class TestProperty18DependencyStringParsingPreservation:
                 f"Relation {i}: expected package '{exp_pkg}', got '{relation.package}'.\nInput: {dep_string!r}"
             )
 
-    @settings(max_examples=100)
     @given(data=dependency_string_with_expected())
     def test_dependency_version_constraints_preserved(
         self,
@@ -327,7 +323,6 @@ class TestProperty18DependencyStringParsingPreservation:
                 f"Input: {dep_string!r}"
             )
 
-    @settings(max_examples=100)
     @given(data=dependency_string_with_expected())
     def test_dependency_alternatives_preserved(
         self,
@@ -379,7 +374,6 @@ class TestProperty19InvalidInputRejectionByDebParser:
     **Validates: Requirements 1.6**
     """
 
-    @settings(max_examples=100)
     @given(raw_bytes=bytes_without_ar_magic())
     def test_rejects_bytes_without_ar_magic(self, raw_bytes: bytes) -> None:
         """DebParser raises DebParseError for bytes missing ar magic."""

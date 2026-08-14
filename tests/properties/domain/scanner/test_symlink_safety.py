@@ -13,7 +13,7 @@ import tempfile
 from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.scanners.directory import DirectoryScanner
@@ -84,7 +84,6 @@ class TestProperty6SymlinkContainment:
     **Validates: Requirements 4.7**
     """
 
-    @settings(max_examples=50)
     @given(escape_path=st_relative_escape_path())
     def test_symlinks_outside_root_are_rejected(
         self,
@@ -114,7 +113,6 @@ class TestProperty6SymlinkContainment:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(internal_path=st_internal_relative_path())
     def test_symlinks_within_root_are_accepted(
         self,
@@ -144,7 +142,6 @@ class TestProperty6SymlinkContainment:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(
         depth=st.integers(min_value=1, max_value=4),
         filename=st.text(alphabet=_FILENAME_CHARS, min_size=1, max_size=15),
@@ -181,7 +178,6 @@ class TestProperty6SymlinkContainment:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=50)
     @given(filename=st.text(alphabet=_FILENAME_CHARS, min_size=1, max_size=15))
     def test_regular_files_always_accepted(
         self,
@@ -204,7 +200,6 @@ class TestProperty6SymlinkContainment:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=30)
     @given(filename=st.text(alphabet=_FILENAME_CHARS, min_size=1, max_size=15))
     def test_absolute_symlinks_outside_root_rejected(
         self,
@@ -232,7 +227,6 @@ class TestProperty6SymlinkContainment:
         finally:
             shutil.rmtree(tmp_dir)
 
-    @settings(max_examples=30)
     @given(filename=st.text(alphabet=_FILENAME_CHARS, min_size=1, max_size=15))
     def test_chained_symlinks_escaping_root_rejected(
         self,

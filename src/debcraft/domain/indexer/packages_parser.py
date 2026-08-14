@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 
+from debcraft.domain._stanza_parser import parse_stanza_fields, split_stanzas
 from debcraft.domain.indexer.values import PackageMetadata
 
 logger = logging.getLogger(__name__)
@@ -39,52 +40,14 @@ class PackagesParser:
             return []
 
         results: list[PackageMetadata] = []
-        stanzas = content.split("\n\n")
 
-        for stanza in stanzas:
-            stanza = stanza.strip()
-            if not stanza:
-                continue
-
-            fields = self._parse_stanza_fields(stanza)
+        for stanza in split_stanzas(content):
+            fields = parse_stanza_fields(stanza, preserve_continuations=True)
             metadata = self._build_metadata(fields)
             if metadata is not None:
                 results.append(metadata)
 
         return results
-
-    def _parse_stanza_fields(self, stanza: str) -> dict[str, str]:
-        """Parse a single stanza into a field name → value mapping.
-
-        Handles multi-line continuation fields (lines starting with whitespace
-        are appended to the previous field's value).
-        """
-        fields: dict[str, str] = {}
-        current_key: str | None = None
-        current_value_lines: list[str] = []
-
-        for line in stanza.split("\n"):
-            if line.startswith(" ") or line.startswith("\t"):
-                # Continuation line
-                if current_key is not None:
-                    current_value_lines.append(line[1:])
-            else:
-                # Save previous field
-                if current_key is not None:
-                    fields[current_key] = "\n".join(current_value_lines)
-
-                # Parse new field
-                colon_idx = line.find(":")
-                if colon_idx == -1:
-                    continue
-                current_key = line[:colon_idx]
-                current_value_lines = [line[colon_idx + 1 :].strip()]
-
-        # Save last field
-        if current_key is not None:
-            fields[current_key] = "\n".join(current_value_lines)
-
-        return fields
 
     def _build_metadata(self, fields: dict[str, str]) -> PackageMetadata | None:
         """Build a PackageMetadata from parsed fields, or None if invalid.

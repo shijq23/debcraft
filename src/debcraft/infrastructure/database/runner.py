@@ -171,7 +171,7 @@ class MigrationRunner:
                     raise AttributeError(msg)
 
                 # migrate_fn is an async def — cast to suppress type narrowing issues
-                coro: Any = migrate_fn(session)
+                coro: Any = migrate_fn(session)  # pylint: disable=not-callable
                 await coro
 
                 # Calculate duration

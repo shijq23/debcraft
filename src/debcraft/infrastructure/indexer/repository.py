@@ -10,9 +10,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
 from sqlalchemy import delete, select
 
 from debcraft.domain.indexer.values import FileOwnership, PackageMetadata, SourcePackageMetadata
@@ -27,6 +24,8 @@ from debcraft.infrastructure.models.metadata import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from debcraft.infrastructure.indexer.mapper import IndexerMapper

@@ -36,8 +36,16 @@ jobs:
       - name: Type check
         run: uv run basedpyright src/
 
+      - name: Build test fixtures
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y --no-install-recommends genisoimage squashfs-tools
+          make -C fixtures images
+
       - name: Unit tests
         run: uv run pytest
+        env:
+          HYPOTHESIS_PROFILE: ci
 
       - name: Import linter
         run: uv run lint-imports

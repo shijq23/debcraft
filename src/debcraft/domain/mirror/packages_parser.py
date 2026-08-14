@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 
+from debcraft.domain._stanza_parser import parse_stanza_fields, split_stanzas
 from debcraft.domain.mirror.values import FileEntry
 
 logger = logging.getLogger(__name__)
@@ -58,69 +59,15 @@ class PackagesParser:
             return []
 
         entries: list[FileEntry] = []
-        stanzas = self._split_stanzas(content)
+        stanzas = split_stanzas(content)
 
         for stanza in stanzas:
-            fields = self._parse_stanza_fields(stanza)
+            fields = parse_stanza_fields(stanza, preserve_continuations=False)
             entry = self._extract_entry(fields)
             if entry is not None:
                 entries.append(entry)
 
         return entries
-
-    def _split_stanzas(self, content: str) -> list[str]:
-        """Split content into individual package stanzas.
-
-        Stanzas are separated by one or more blank lines.
-        Leading/trailing whitespace-only stanzas are discarded.
-
-        Returns:
-            List of non-empty stanza strings.
-        """
-        stanzas: list[str] = []
-        current_lines: list[str] = []
-
-        for line in content.splitlines():
-            if line.strip() == "":
-                # Blank line: finalize current stanza if non-empty
-                if current_lines:
-                    stanzas.append("\n".join(current_lines))
-                    current_lines = []
-            else:
-                current_lines.append(line)
-
-        # Don't forget the last stanza if file doesn't end with blank line
-        if current_lines:
-            stanzas.append("\n".join(current_lines))
-
-        return stanzas
-
-    def _parse_stanza_fields(self, stanza: str) -> dict[str, str]:
-        """Parse key-value fields from a single stanza.
-
-        Each field is on a line of the form `Key: Value`. Lines
-        starting with whitespace are multi-line continuations of
-        the previous field and are not treated as new fields.
-
-        Returns:
-            Dictionary mapping field names to their values.
-            Only the first occurrence of a field name is kept.
-        """
-        fields: dict[str, str] = {}
-
-        for line in stanza.splitlines():
-            # Multi-line continuation (starts with space or tab) — skip
-            if line.startswith(" ") or line.startswith("\t"):
-                continue
-            # Parse Key: Value
-            if ":" in line:
-                key, _, value = line.partition(":")
-                key = key.strip()
-                value = value.strip()
-                if key and key not in fields:
-                    fields[key] = value
-
-        return fields
 
     def _extract_entry(self, fields: dict[str, str]) -> FileEntry | None:
         """Extract a FileEntry from parsed stanza fields.

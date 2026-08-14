@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -84,7 +84,6 @@ class TestBatchedInsertCorrectness:
     retrievable by their assigned surrogate keys with correct field values.
     """
 
-    @settings(max_examples=200)
     @given(entities_data=_unique_source_packages_strategy())
     def test_batch_add_all_retrievable_with_correct_fields(
         self,

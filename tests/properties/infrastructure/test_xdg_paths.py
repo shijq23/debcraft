@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import get_args
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.storage.paths import resolve_xdg_path
@@ -92,7 +92,6 @@ class TestXdgPathResolutionProperty:
     has the correct subdirectory suffix appended.
     """
 
-    @settings(max_examples=200)
     @given(
         platform=st.sampled_from(["linux", "darwin", "win32"]),
         purpose=st.sampled_from(_ALL_PURPOSES),
@@ -126,7 +125,6 @@ class TestXdgPathResolutionProperty:
         else:
             assert PurePosixPath(result.as_posix()).is_absolute()
 
-    @settings(max_examples=200)
     @given(
         platform=st.sampled_from(["linux", "darwin", "win32"]),
         purpose=st.sampled_from(_ALL_PURPOSES),
@@ -143,7 +141,6 @@ class TestXdgPathResolutionProperty:
         result = resolve_xdg_path(purpose, environ=environ, platform=platform)  # type: ignore[arg-type]
         assert "debcraft" in result.parts
 
-    @settings(max_examples=200)
     @given(
         environ=_linux_env_strategy(),
         purpose=st.sampled_from(list(_CACHE_PURPOSES)),
@@ -162,7 +159,6 @@ class TestXdgPathResolutionProperty:
         assert result.name == purpose
         assert result.parent.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(environ=_linux_env_strategy())
     def test_linux_database_rooted_in_xdg_data(self, environ: dict[str, str]) -> None:
         """On Linux, database purpose is rooted in XDG_DATA_HOME or ~/.local/share."""
@@ -176,7 +172,6 @@ class TestXdgPathResolutionProperty:
         assert result.is_relative_to(expected_base)
         assert result.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(environ=_linux_env_strategy())
     def test_linux_config_rooted_in_xdg_config(self, environ: dict[str, str]) -> None:
         """On Linux, config purpose is rooted in XDG_CONFIG_HOME or ~/.config."""
@@ -190,7 +185,6 @@ class TestXdgPathResolutionProperty:
         assert result.is_relative_to(expected_base)
         assert result.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(
         environ=_darwin_env_strategy(),
         purpose=st.sampled_from(list(_CACHE_PURPOSES)),
@@ -208,7 +202,6 @@ class TestXdgPathResolutionProperty:
         assert result.name == purpose
         assert result.parent.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(environ=_darwin_env_strategy())
     def test_darwin_database_rooted_correctly(self, environ: dict[str, str]) -> None:
         """On macOS, database uses XDG_DATA_HOME or ~/Library/Application Support."""
@@ -222,7 +215,6 @@ class TestXdgPathResolutionProperty:
         assert result.is_relative_to(expected_base)
         assert result.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(environ=_darwin_env_strategy())
     def test_darwin_config_rooted_correctly(self, environ: dict[str, str]) -> None:
         """On macOS, config uses XDG_CONFIG_HOME or ~/Library/Preferences."""
@@ -236,7 +228,6 @@ class TestXdgPathResolutionProperty:
         assert result.is_relative_to(expected_base)
         assert result.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(
         environ=_windows_env_strategy(),
         purpose=st.sampled_from(list(_CACHE_PURPOSES)),
@@ -258,7 +249,6 @@ class TestXdgPathResolutionProperty:
         assert result.name == purpose
         assert "debcraft" in result.parts
 
-    @settings(max_examples=200)
     @given(environ=_windows_env_strategy())
     def test_windows_database_rooted_correctly(self, environ: dict[str, str]) -> None:
         """On Windows, database uses XDG_DATA_HOME or APPDATA."""
@@ -275,7 +265,6 @@ class TestXdgPathResolutionProperty:
         assert result.is_relative_to(expected_base)
         assert result.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(environ=_windows_env_strategy())
     def test_windows_config_rooted_correctly(self, environ: dict[str, str]) -> None:
         """On Windows, config uses XDG_CONFIG_HOME or APPDATA with /config suffix."""
@@ -294,7 +283,6 @@ class TestXdgPathResolutionProperty:
         assert result.name == "config"
         assert result.parent.name == "debcraft"
 
-    @settings(max_examples=200)
     @given(
         platform=st.sampled_from(["linux", "darwin", "win32"]),
         purpose=st.sampled_from(_ALL_PURPOSES),

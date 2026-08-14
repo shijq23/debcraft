@@ -171,7 +171,7 @@ class KernelWorkflowEngine(WorkflowEngine):
             final_state = WorkflowState.CANCELLED
             cancellation_token.cancel()
             logger.info("Workflow cancelled")
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Top-level workflow executor: must capture any failure
             final_state = WorkflowState.FAILED
             error_details = f"{type(exc).__name__}: {exc}"
             logger.error("Workflow failed", error=error_details)
@@ -182,7 +182,7 @@ class KernelWorkflowEngine(WorkflowEngine):
             if scope is not None:
                 try:
                     await scope.close()
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught  # Scope cleanup: must not crash workflow finalization
                     _logger.exception("Failed to close workflow scope")
 
         end_time = datetime.now(UTC)
@@ -299,7 +299,7 @@ class KernelWorkflowEngine(WorkflowEngine):
             except TimeoutError:
                 cancellation_token.cancel()
                 raise WorkflowTimeoutError(workflow.name, policy.timeout_seconds) from None
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught  # Retry boundary: user workflows may raise arbitrary errors
                 last_exception = exc
                 if policy.fail_fast or attempt == max_attempts - 1:
                     raise

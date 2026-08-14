@@ -12,18 +12,17 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from debcraft.cli.index import index_app
+from debcraft.cli.mirror import mirror_app
+from debcraft.cli.sbom import sbom as sbom_command
 from debcraft.version import VERSION
 
 app = typer.Typer(name="debcraft", help="DebCraft - Artifact Intelligence Platform")
 console = Console()
 
-from debcraft.cli.mirror import mirror_app  # noqa: E402
-
 app.add_typer(mirror_app, name="mirror")
-
-from debcraft.cli.index import index_app  # noqa: E402
-
 app.add_typer(index_app, name="index")
+app.command()(sbom_command)
 
 
 @dataclass

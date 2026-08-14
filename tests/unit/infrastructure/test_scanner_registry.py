@@ -307,6 +307,148 @@ class TestGetScanner:
         assert "docker" in exc_info.value.registered
 
 
+class TestRegister:
+    """Tests for the register() method."""
+
+    def test_register_valid_scanner_is_retrievable(self):
+        """Register a valid scanner instance → it's retrievable via get_scanner()."""
+        registry = ScannerRegistry()
+        scanner = FakeValidScanner()
+
+        registry.register(ArtifactType.DIRECTORY, scanner)
+
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is scanner
+
+    def test_register_invalid_protocol_raises_value_error(self):
+        """Register a scanner that fails protocol validation → raises ValueError."""
+        registry = ScannerRegistry()
+        scanner = FakeInvalidScanner()
+
+        with pytest.raises(ValueError, match="does not conform to ArtifactScanner protocol"):
+            registry.register(ArtifactType.DIRECTORY, scanner)
+
+    def test_register_higher_priority_wins(self):
+        """Register two scanners for the same type with different priorities → higher priority wins."""
+        registry = ScannerRegistry()
+        low_scanner = FakeValidScanner()  # priority = 0
+        high_scanner = FakeHighPriorityScanner()  # priority = 10
+
+        registry.register(ArtifactType.DIRECTORY, low_scanner)
+        registry.register(ArtifactType.DIRECTORY, high_scanner)
+
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is high_scanner
+
+    def test_register_equal_priority_keeps_existing(self):
+        """Register two scanners for the same type with equal priority → first one kept."""
+        registry = ScannerRegistry()
+        first_scanner = FakeValidScanner()  # priority = 0
+        second_scanner = FakeValidScanner()  # priority = 0
+
+        registry.register(ArtifactType.DIRECTORY, first_scanner)
+        registry.register(ArtifactType.DIRECTORY, second_scanner)
+
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is first_scanner
+
+    def test_register_explicit_priority_overrides_attribute(self):
+        """Register a scanner with explicit priority kwarg overriding the instance's priority attribute."""
+        registry = ScannerRegistry()
+        low_scanner = FakeValidScanner()  # has priority = 0
+        high_scanner = FakeHighPriorityScanner()  # has priority = 10
+
+        # Register high_scanner first
+        registry.register(ArtifactType.DIRECTORY, high_scanner)
+        # Register low_scanner with explicit priority=20 that overrides its attribute (0)
+        registry.register(ArtifactType.DIRECTORY, low_scanner, priority=20)
+
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is low_scanner
+
+    def test_register_no_priority_attribute_defaults_to_zero(self):
+        """Register a scanner with no priority attribute → defaults to 0."""
+
+        class NoPriorityScanner:
+            async def scan(self, artifact, context):
+                return None
+
+        registry = ScannerRegistry()
+        scanner = NoPriorityScanner()
+
+        registry.register(ArtifactType.DIRECTORY, scanner)
+
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is scanner
+
+    def test_register_no_scan_method_raises(self):
+        """Register a scanner with no scan method → raises ValueError."""
+        registry = ScannerRegistry()
+        scanner = FakeNoScanMethod()
+
+        with pytest.raises(ValueError, match="does not conform to ArtifactScanner protocol"):
+            registry.register(ArtifactType.DIRECTORY, scanner)
+
+    def test_register_lower_priority_does_not_replace(self):
+        """Register a scanner with lower priority does not replace existing."""
+        registry = ScannerRegistry()
+        high_scanner = FakeHighPriorityScanner()  # priority = 10
+        low_scanner = FakeValidScanner()  # priority = 0
+
+        registry.register(ArtifactType.DIRECTORY, high_scanner)
+        registry.register(ArtifactType.DIRECTORY, low_scanner)
+
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is high_scanner
+
+
+class TestClassDetection:
+    """Tests for class-detection behavior in _load_entry_point()."""
+
+    @patch("debcraft.infrastructure.scanners.registry.importlib.metadata.entry_points")
+    def test_class_entry_point_records_diagnostic_not_registered(self, mock_entry_points):
+        """Entry point that returns a CLASS → diagnostic recorded, scanner NOT registered."""
+        # ep.load() returns the class itself, not an instance
+        ep = _make_entry_point("directory", load_result=FakeValidScanner)
+        mock_entry_points.return_value = [ep]
+
+        registry = ScannerRegistry()
+        registry.load_from_entry_points()
+
+        assert registry.registered_types == []
+        assert len(registry.diagnostics) == 1
+        assert "returned a class" in registry.diagnostics[0]
+        assert "FakeValidScanner" in registry.diagnostics[0]
+
+    @patch("debcraft.infrastructure.scanners.registry.importlib.metadata.entry_points")
+    def test_instance_entry_point_registered_normally(self, mock_entry_points):
+        """Entry point that returns an INSTANCE → scanner registered normally."""
+        scanner = FakeValidScanner()
+        ep = _make_entry_point("directory", load_result=scanner)
+        mock_entry_points.return_value = [ep]
+
+        registry = ScannerRegistry()
+        registry.load_from_entry_points()
+
+        assert ArtifactType.DIRECTORY in registry.registered_types
+        assert registry.get_scanner(ArtifactType.DIRECTORY) is scanner
+        assert registry.diagnostics == []
+
+    @patch("debcraft.infrastructure.scanners.registry.importlib.metadata.entry_points")
+    def test_mixed_class_and_instance_only_instance_registered(self, mock_entry_points):
+        """Multiple entry points, one class and one instance → only instance registered, class gets diagnostic."""
+        instance_scanner = FakeValidScanner()
+        ep_class = _make_entry_point("directory", load_result=FakeValidScanner)  # class
+        ep_instance = _make_entry_point("docker", load_result=instance_scanner)  # instance
+        mock_entry_points.return_value = [ep_class, ep_instance]
+
+        registry = ScannerRegistry()
+        registry.load_from_entry_points()
+
+        # Only the instance-based entry point should be registered
+        assert ArtifactType.DOCKER in registry.registered_types
+        assert ArtifactType.DIRECTORY not in registry.registered_types
+        assert registry.get_scanner(ArtifactType.DOCKER) is instance_scanner
+
+        # One diagnostic for the class entry point
+        assert len(registry.diagnostics) == 1
+        assert "returned a class" in registry.diagnostics[0]
+
+
 class TestValidateProtocol:
     """Tests for _validate_protocol method."""
 

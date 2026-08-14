@@ -25,7 +25,7 @@ field differs and all other fields are identical, a != b SHALL hold.
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.values import (
@@ -88,7 +88,6 @@ class TestProperty1ValueObjectImmutability:
     value to any of its fields SHALL raise an AttributeError.
     """
 
-    @settings(max_examples=200)
     @given(entry=_file_entry())
     def test_file_entry_fields_are_immutable(self, entry: FileEntry) -> None:
         """FileEntry field assignment raises AttributeError."""
@@ -99,7 +98,6 @@ class TestProperty1ValueObjectImmutability:
         with pytest.raises(AttributeError):
             entry.size_bytes = 999  # type: ignore[misc]
 
-    @settings(max_examples=200)
     @given(decision=_sync_decision())
     def test_sync_decision_fields_are_immutable(self, decision: SyncDecision) -> None:
         """SyncDecision field assignment raises AttributeError."""
@@ -110,7 +108,6 @@ class TestProperty1ValueObjectImmutability:
         with pytest.raises(AttributeError):
             decision.reason = "new"  # type: ignore[misc]
 
-    @settings(max_examples=200)
     @given(result=_download_result())
     def test_download_result_fields_are_immutable(self, result: DownloadResult) -> None:
         """DownloadResult field assignment raises AttributeError."""
@@ -146,19 +143,16 @@ class TestProperty2EqualityReflexivity:
     itself under the == operator.
     """
 
-    @settings(max_examples=200)
     @given(entry=_file_entry())
     def test_file_entry_equals_itself(self, entry: FileEntry) -> None:
         """FileEntry instance equals itself."""
         assert entry == entry
 
-    @settings(max_examples=200)
     @given(decision=_sync_decision())
     def test_sync_decision_equals_itself(self, decision: SyncDecision) -> None:
         """SyncDecision instance equals itself."""
         assert decision == decision
 
-    @settings(max_examples=200)
     @given(result=_download_result())
     def test_download_result_equals_itself(self, result: DownloadResult) -> None:
         """DownloadResult instance equals itself."""
@@ -179,7 +173,6 @@ class TestProperty3EqualitySymmetry:
     a == b and b == a both evaluate to True.
     """
 
-    @settings(max_examples=200)
     @given(
         relative_path=st.text(),
         sha256=st.text(),
@@ -192,7 +185,6 @@ class TestProperty3EqualitySymmetry:
         assert a == b
         assert b == a
 
-    @settings(max_examples=200)
     @given(
         file_entry=_file_entry(),
         action=st.sampled_from(["download", "skip", "verify"]),
@@ -205,7 +197,6 @@ class TestProperty3EqualitySymmetry:
         assert a == b
         assert b == a
 
-    @settings(max_examples=200)
     @given(
         url=st.text(),
         success=st.booleans(),
@@ -268,7 +259,6 @@ class TestProperty4InequalityOnDifferingFields:
 
     # --- FileEntry ---
 
-    @settings(max_examples=200)
     @given(
         entry=_file_entry(),
         other_path=st.text(),
@@ -279,7 +269,6 @@ class TestProperty4InequalityOnDifferingFields:
         other = FileEntry(other_path, entry.sha256, entry.size_bytes)
         assert entry != other
 
-    @settings(max_examples=200)
     @given(
         entry=_file_entry(),
         other_sha=st.text(),
@@ -290,7 +279,6 @@ class TestProperty4InequalityOnDifferingFields:
         other = FileEntry(entry.relative_path, other_sha, entry.size_bytes)
         assert entry != other
 
-    @settings(max_examples=200)
     @given(
         entry=_file_entry(),
         other_size=st.integers(min_value=0),
@@ -303,7 +291,6 @@ class TestProperty4InequalityOnDifferingFields:
 
     # --- SyncDecision ---
 
-    @settings(max_examples=200)
     @given(
         decision=_sync_decision(),
         other_entry=_file_entry(),
@@ -314,7 +301,6 @@ class TestProperty4InequalityOnDifferingFields:
         other = SyncDecision(other_entry, decision.action, decision.reason)
         assert decision != other
 
-    @settings(max_examples=200)
     @given(
         decision=_sync_decision(),
         other_action=st.sampled_from(["download", "skip", "verify"]),
@@ -325,7 +311,6 @@ class TestProperty4InequalityOnDifferingFields:
         other = SyncDecision(decision.file_entry, other_action, decision.reason)
         assert decision != other
 
-    @settings(max_examples=200)
     @given(
         decision=_sync_decision(),
         other_reason=st.text(),
@@ -338,7 +323,6 @@ class TestProperty4InequalityOnDifferingFields:
 
     # --- DownloadResult ---
 
-    @settings(max_examples=200)
     @given(
         result=_download_result(),
         other_url=st.text(),
@@ -358,7 +342,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(result=_download_result())
     def test_download_result_differs_on_success(self, result: DownloadResult) -> None:
         """DownloadResult instances with different success are not equal."""
@@ -374,7 +357,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(result=_download_result())
     def test_download_result_differs_on_sha256_verified(self, result: DownloadResult) -> None:
         """DownloadResult instances with different sha256_verified are not equal."""
@@ -390,7 +372,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(
         result=_download_result(),
         other_bytes=st.integers(min_value=0),
@@ -410,7 +391,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(
         result=_download_result(),
         other_error=st.none() | st.text(),
@@ -430,7 +410,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(
         result=_download_result(),
         other_retry=st.integers(min_value=0),
@@ -450,7 +429,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(
         result=_download_result(),
         other_status=st.none() | st.integers(),
@@ -470,7 +448,6 @@ class TestProperty4InequalityOnDifferingFields:
         )
         assert result != other
 
-    @settings(max_examples=200)
     @given(
         result=_download_result(),
         other_headers=st.none() | st.dictionaries(st.text(), st.text()),

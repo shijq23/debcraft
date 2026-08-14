@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.errors import PURLGenerationError
@@ -93,7 +93,6 @@ class TestProperty13PURLFormatConformance:
     **Validates: Requirements 10.1, 10.2, 10.4, 10.5**
     """
 
-    @settings(max_examples=100)
     @given(
         name=valid_package_name(),
         version=valid_version(),
@@ -214,7 +213,6 @@ class TestProperty14PURLGenerationErrorForMissingFields:
     **Validates: Requirements 10.6**
     """
 
-    @settings(max_examples=100)
     @given(inputs=inputs_with_missing_field())
     def test_purl_generation_error_for_missing_fields(
         self,

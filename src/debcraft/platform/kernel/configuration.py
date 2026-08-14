@@ -264,8 +264,6 @@ def _dataclass_from_dict[DT](section_type: type[DT], data: dict[str, Any], secti
 
     try:
         return section_type(**kwargs)
-    except ConfigurationValidationError:
-        raise
     except (TypeError, ValueError) as exc:
         raise ConfigurationValidationError(
             field_name=section_key,

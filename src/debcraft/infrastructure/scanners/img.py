@@ -15,8 +15,8 @@ import time
 from typing import TYPE_CHECKING
 
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
-from debcraft.domain.scanner.filesystem_analyzer import analyze_filesystem
 from debcraft.domain.scanner.values import ScanningStrategy, ScanResult
+from debcraft.infrastructure.scanners._mixin import ScannerMixin
 
 if TYPE_CHECKING:
     from debcraft.domain.scanner.ports import (
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from debcraft.platform.contracts.workflow import WorkflowContext
 
 
-class IMGScanner:
+class IMGScanner(ScannerMixin):
     """Scans raw disk images for installed Debian packages.
 
     Uses guestfs to inspect partitions, supports multi-partition images.
@@ -81,7 +81,7 @@ class IMGScanner:
         if self._guestfs is None:
             duration = time.perf_counter() - start_time
             diagnostics.append("guestfs library is not available: cannot inspect raw disk image without libguestfs")
-            context.progress.report(100.0, "Scan complete: guestfs unavailable")
+            self._report_progress(context, 100.0, "Scan complete: guestfs unavailable")
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
@@ -93,11 +93,11 @@ class IMGScanner:
         # Step 2: Open image and enumerate partitions
         try:
             self._guestfs.open_image(image_path, readonly=True)
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             # Req 9.5: Path doesn't exist or not readable
             duration = time.perf_counter() - start_time
             diagnostics.append(f"Failed to open disk image at '{image_path}': {exc}")
-            context.progress.report(100.0, "Scan complete: image not accessible")
+            self._report_progress(context, 100.0, "Scan complete: image not accessible")
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
@@ -136,25 +136,23 @@ class IMGScanner:
         assert self._guestfs is not None  # noqa: S101
         # Check cancellation before partition enumeration (Req 9.7)
         if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled before partition enumeration")
-            context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
+            self._report_progress(context, 100.0, "Scan cancelled")
+            return self._build_cancellation_result(
+                step="before partition enumeration",
+                start_time=start_time,
                 strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
                 artifact_path=image_path,
+                diagnostics=diagnostics,
             )
 
         # Enumerate partitions via inspect_os (Req 9.2)
         try:
             roots = self._guestfs.inspect_os()
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             # Req 9.6: Unrecognized partition table or filesystem
             duration = time.perf_counter() - start_time
             diagnostics.append(f"Failed to inspect disk image partitions: {exc}")
-            context.progress.report(100.0, "Scan complete: inspection failed")
+            self._report_progress(context, 100.0, "Scan complete: inspection failed")
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
@@ -167,7 +165,7 @@ class IMGScanner:
             # Req 9.6: No partitions found
             duration = time.perf_counter() - start_time
             diagnostics.append("No OS partitions found in disk image: unrecognized partition table or filesystem")
-            context.progress.report(100.0, "Scan complete: no partitions found")
+            self._report_progress(context, 100.0, "Scan complete: no partitions found")
             return ScanResult(
                 packages=[],
                 strategy=ScanningStrategy.DPKG_METADATA.value,
@@ -181,21 +179,19 @@ class IMGScanner:
         for index, root_device in enumerate(roots):
             # Check cancellation between partitions (Req 9.7)
             if context.cancellation_token.is_cancelled:
-                duration = time.perf_counter() - start_time
-                diagnostics.append(f"Scan cancelled after inspecting {index} of {len(roots)} partitions")
-                context.progress.report(100.0, "Scan cancelled")
-                return ScanResult(
-                    packages=[],
+                self._report_progress(context, 100.0, "Scan cancelled")
+                return self._build_cancellation_result(
+                    step=f"inspecting partitions ({index} of {len(roots)} inspected)",
+                    start_time=start_time,
                     strategy=ScanningStrategy.DPKG_METADATA.value,
-                    diagnostics=diagnostics,
-                    duration_seconds=duration,
                     artifact_path=image_path,
+                    diagnostics=diagnostics,
                 )
 
             # Mount partition read-only (Req 9.8)
             try:
                 self._guestfs.mount_readonly(root_device, "/")
-            except Exception:  # noqa: S112
+            except (OSError, RuntimeError):
                 # This partition's filesystem is unsupported, skip it
                 continue
 
@@ -204,7 +200,7 @@ class IMGScanner:
                 content_bytes = self._guestfs.read_file("/var/lib/dpkg/status")
                 dpkg_content = content_bytes.decode("utf-8", errors="replace")
                 break  # Req 9.2: Use first partition with dpkg status
-            except Exception:  # noqa: S112
+            except (OSError, RuntimeError):
                 # dpkg status not found on this partition, continue
                 continue
 
@@ -212,19 +208,12 @@ class IMGScanner:
         if dpkg_content is not None:
             # Req 9.3: dpkg status found, parse it
             parse_result = parse_dpkg_status(dpkg_content)
-            diagnostics.extend(parse_result.diagnostics)
-
-            duration = time.perf_counter() - start_time
-            context.progress.report(
-                100.0,
-                f"Scan complete: identified {len(parse_result.packages)} packages",
-            )
-            return ScanResult(
-                packages=parse_result.packages,
-                strategy=ScanningStrategy.DPKG_METADATA.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
+            return self._build_dpkg_success_result(
+                parse_result=parse_result,
+                context=context,
+                start_time=start_time,
                 artifact_path=image_path,
+                diagnostics=diagnostics,
             )
 
         # Req 9.4: No dpkg status on any partition, fall back to FilesystemAnalyzer
@@ -259,42 +248,18 @@ class IMGScanner:
             # Try to list files from the root filesystem
             file_paths = self._collect_file_paths("/")
 
-        if context.cancellation_token.is_cancelled:
-            duration = time.perf_counter() - start_time
-            diagnostics.append("Scan cancelled during filesystem analysis")
-            context.progress.report(100.0, "Scan cancelled")
-            return ScanResult(
-                packages=[],
-                strategy=ScanningStrategy.FILESYSTEM_ANALYSIS.value,
-                diagnostics=diagnostics,
-                duration_seconds=duration,
-                artifact_path=image_path,
-            )
-
-        # Get snapshot_id from artifact options
-        snapshot_id = int(artifact.options.get("snapshot_id", "0"))
-
-        # Run filesystem analysis
-        result = await analyze_filesystem(
+        # Run filesystem analysis with pre-cancellation check and build result
+        return await self._analyze_and_build_filesystem_result(
             file_paths=file_paths,
+            artifact=artifact,
             contents_port=self._contents_port,
             package_port=self._package_port,
-            snapshot_id=snapshot_id,
-        )
-
-        diagnostics.extend(result.diagnostics)
-
-        duration = time.perf_counter() - start_time
-        context.progress.report(
-            100.0,
-            f"Scan complete: identified {len(result.packages)} packages via filesystem analysis",
-        )
-        return ScanResult(
-            packages=result.packages,
-            strategy=ScanningStrategy.FILESYSTEM_ANALYSIS.value,
-            diagnostics=diagnostics,
-            duration_seconds=duration,
+            context=context,
             artifact_path=image_path,
+            start_time=start_time,
+            diagnostics=diagnostics,
+            use_cancellation_iteration=False,
+            pre_cancellation_step="filesystem analysis",
         )
 
     def _collect_file_paths(self, directory: str) -> list[str]:
@@ -318,7 +283,7 @@ class IMGScanner:
             current_dir = dirs_to_visit.pop(0)
             try:
                 entries = self._guestfs.ls(current_dir)
-            except Exception:  # noqa: S112
+            except (OSError, RuntimeError):
                 continue
 
             for entry in entries:

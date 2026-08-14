@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.infrastructure.database.provider import SqliteDatabaseProvider
@@ -37,7 +37,6 @@ class TestInvalidDatabaseNameRejection:
     get_session() raises a StorageError indicating the unrecognized name.
     """
 
-    @settings(max_examples=200)
     @given(
         invalid_name=st.text().filter(lambda s: s not in {"mirror", "metadata", "cache"}),
     )

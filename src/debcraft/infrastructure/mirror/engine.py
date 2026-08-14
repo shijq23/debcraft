@@ -9,7 +9,6 @@ commits.
 from __future__ import annotations
 
 import gzip
-import hashlib
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,17 +17,18 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 
 from debcraft.domain.mirror.comparator import FileComparator, generate_index_paths
 from debcraft.domain.mirror.packages_parser import PackagesParser
 from debcraft.domain.mirror.release_parser import ReleaseMetadata, ReleaseParser
+from debcraft.infrastructure.mirror import _checksums, _persistence, _staging
 from debcraft.infrastructure.mirror.download import DownloadTask
-from debcraft.infrastructure.mirror.errors import ReleaseParseError
 from debcraft.infrastructure.models.mirror import RepositoryFile, RepositoryFileState, SyncSession
 
 if TYPE_CHECKING:
     from debcraft.domain.mirror.config import RepositoryConfig
-    from debcraft.domain.mirror.values import FileEntry
+    from debcraft.domain.mirror.values import DownloadResult, FileEntry
     from debcraft.infrastructure.mirror.download import DownloadCoordinator
     from debcraft.platform.contracts.events import EventBus
     from debcraft.platform.contracts.logging import Logger
@@ -70,6 +70,7 @@ class MirrorEngine:
     def __init__(
         self,
         download_coordinator: DownloadCoordinator,
+        *,
         db_provider: DatabaseProvider,
         storage_engine: StorageEngine,
         event_bus: EventBus,
@@ -143,92 +144,112 @@ class MirrorEngine:
                 )
                 break
 
-            # Calculate progress offsets for this suite
-            suite_base = (suite_idx / total_suites) * 100
-            suite_range = 100 / total_suites
-
-            # Stage 1: Release (0-20% of suite range)
-            self._progress.report(
-                suite_base + suite_range * 0.0,
-                f"Downloading Release file for {suite}",
-            )
-            release = await self._stage_release(config, suite)
-
-            if release is None:
-                # Suite is up-to-date or failed
-                continue
-
-            if self._cancellation_token.is_cancelled:
-                self._logger.info(
-                    "Cancellation detected after release stage",
-                    session_id=session_id,
-                )
+            cancelled = await self._sync_single_suite(config, suite, suite_idx, total_suites)
+            if cancelled:
                 break
 
-            # Stage 2: Indexes (20-50% of suite range)
-            self._progress.report(
-                suite_base + suite_range * 0.2,
-                f"Downloading indexes for {suite}",
-            )
-            entries = await self._stage_indexes(config, suite, release)
-
-            if self._cancellation_token.is_cancelled:
-                self._logger.info(
-                    "Cancellation detected after indexes stage",
-                    session_id=session_id,
-                )
-                break
-
-            # Stage 3: Artifacts (50-80% of suite range)
-            self._progress.report(
-                suite_base + suite_range * 0.5,
-                f"Downloading artifacts for {suite}",
-            )
-            await self._stage_artifacts(config, entries)
-
-            if self._cancellation_token.is_cancelled:
-                self._logger.info(
-                    "Cancellation detected after artifacts stage",
-                    session_id=session_id,
-                )
-                break
-
-            # Stage 4: Verify (80-95% of suite range)
-            self._progress.report(
-                suite_base + suite_range * 0.8,
-                f"Verifying downloads for {suite}",
-            )
-            # Verification is handled during download (SHA256 check)
-            # Files that pass are already in VERIFIED state
-
-            if self._cancellation_token.is_cancelled:
-                self._logger.info(
-                    "Cancellation detected after verify stage",
-                    session_id=session_id,
-                )
-                break
-
-            # Stage 5: Publish (95-100% of suite range)
-            self._progress.report(
-                suite_base + suite_range * 0.95,
-                f"Publishing snapshot for {suite}",
-            )
-            await self._stage_publish(config)
-
-        # Compute elapsed time and determine final status
+        # Finalize: compute status, persist session, log summary
         elapsed = time.monotonic() - start_time
-        total_processed = self._result.files_downloaded + self._result.files_skipped + self._result.files_failed
+        status = self._determine_sync_status()
+        await self._persist_sync_session(config, session_id, status, started_at)
+        self._log_sync_summary(config, session_id, status, elapsed)
+
+        self._progress.report(100.0, "Synchronization complete")
+        return self._result
+
+    async def _sync_single_suite(
+        self,
+        config: RepositoryConfig,
+        suite: str,
+        suite_idx: int,
+        total_suites: int,
+    ) -> bool:
+        """Run the five-stage pipeline for a single suite.
+
+        Args:
+            config: Repository configuration.
+            suite: The distribution suite to sync.
+            suite_idx: Index of the suite in the config list.
+            total_suites: Total number of suites to sync.
+
+        Returns:
+            True if cancellation was detected and the caller should break.
+        """
+        suite_base = (suite_idx / total_suites) * 100
+        suite_range = 100 / total_suites
+
+        # Stage 1: Release (0-20% of suite range)
+        self._progress.report(
+            suite_base + suite_range * 0.0,
+            f"Downloading Release file for {suite}",
+        )
+        release = await self._stage_release(config, suite)
+
+        if release is None:
+            return False
 
         if self._cancellation_token.is_cancelled:
-            status = "cancelled"
-        elif self._result.files_failed > 0 and self._result.files_downloaded > 0:
-            status = "partial"
-        elif self._result.files_failed > 0:
-            status = "failed"
-        else:
-            status = "completed"
+            self._logger.info("Cancellation detected after release stage", session_id=self._session_id)
+            return True
 
-        # Persist SyncSession for observability
+        # Stage 2: Indexes (20-50% of suite range)
+        self._progress.report(suite_base + suite_range * 0.2, f"Downloading indexes for {suite}")
+        entries = await self._stage_indexes(config, suite, release)
+
+        if self._cancellation_token.is_cancelled:
+            self._logger.info("Cancellation detected after indexes stage", session_id=self._session_id)
+            return True
+
+        # Stage 3: Artifacts (50-80% of suite range)
+        self._progress.report(suite_base + suite_range * 0.5, f"Downloading artifacts for {suite}")
+        await self._stage_artifacts(config, entries)
+
+        if self._cancellation_token.is_cancelled:
+            self._logger.info("Cancellation detected after artifacts stage", session_id=self._session_id)
+            return True
+
+        # Stage 4: Verify (80-95% of suite range)
+        self._progress.report(suite_base + suite_range * 0.8, f"Verifying downloads for {suite}")
+        # Verification is handled during download (SHA256 check)
+
+        if self._cancellation_token.is_cancelled:
+            self._logger.info("Cancellation detected after verify stage", session_id=self._session_id)
+            return True
+
+        # Stage 5: Publish (95-100% of suite range)
+        self._progress.report(suite_base + suite_range * 0.95, f"Publishing snapshot for {suite}")
+        await self._stage_publish(config)
+        return False
+
+    def _determine_sync_status(self) -> str:
+        """Determine the final sync session status based on results.
+
+        Returns:
+            One of "cancelled", "partial", "failed", or "completed".
+        """
+        if self._cancellation_token.is_cancelled:
+            return "cancelled"
+        if self._result.files_failed > 0 and self._result.files_downloaded > 0:
+            return "partial"
+        if self._result.files_failed > 0:
+            return "failed"
+        return "completed"
+
+    async def _persist_sync_session(
+        self,
+        config: RepositoryConfig,
+        session_id: str,
+        status: str,
+        started_at: datetime,
+    ) -> None:
+        """Persist the SyncSession record for observability.
+
+        Args:
+            config: Repository configuration.
+            session_id: Unique identifier for this sync session.
+            status: Final status string.
+            started_at: Timestamp when sync started.
+        """
         try:
             db_session = await self._db_provider.get_session("mirror")
             try:
@@ -247,14 +268,29 @@ class MirrorEngine:
                 await db_session.commit()
             finally:
                 await db_session.close()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # DB may raise non-SQLAlchemy errors
             self._logger.error(
                 "Failed to persist sync session",
                 session_id=session_id,
                 error=str(exc),
             )
 
-        # Emit summary log entry (Requirement 14.6)
+    def _log_sync_summary(
+        self,
+        config: RepositoryConfig,
+        session_id: str,
+        status: str,
+        elapsed: float,
+    ) -> None:
+        """Emit the summary log entry for the completed sync.
+
+        Args:
+            config: Repository configuration.
+            session_id: Unique identifier for this sync session.
+            status: Final status string.
+            elapsed: Elapsed wall-clock time in seconds.
+        """
+        total_processed = self._result.files_downloaded + self._result.files_skipped + self._result.files_failed
         self._logger.info(
             "Repository sync finished",
             repository=config.name,
@@ -268,122 +304,49 @@ class MirrorEngine:
             elapsed_seconds=round(elapsed, 2),
         )
 
-        self._progress.report(100.0, "Synchronization complete")
-        return self._result
-
     async def _stage_release(self, config: RepositoryConfig, suite: str) -> ReleaseMetadata | None:
-        """Download and parse Release file for a suite.
-
-        Attempts to download InRelease first, falling back to Release
-        on HTTP 404. Uses conditional requests if a cached version exists.
-        Returns None if the suite is already up-to-date (304 response or
-        matching checksum).
-
-        Args:
-            config: Repository configuration.
-            suite: The distribution suite to download Release for.
-
-        Returns:
-            Parsed ReleaseMetadata, or None if up-to-date or failed.
-        """
-        base_url = config.base_url.rstrip("/")
-        inrelease_url = f"{base_url}/dists/{suite}/InRelease"
-        release_url = f"{base_url}/dists/{suite}/Release"
+        """Download and parse Release file for a suite."""
         mirror_root = self._get_mirror_root(config)
+        release, downloaded, failed = await _staging.stage_release(
+            self._db_provider,
+            self._download_coordinator,
+            self._release_parser,
+            self._logger,
+            self._session_id,
+            config=config,
+            suite=suite,
+            mirror_root=mirror_root,
+            upsert_fn=self._upsert_repository_file,
+        )
+        self._result.files_downloaded += downloaded
+        self._result.files_failed += failed
+        return release
 
-        # Check if we have a cached version for conditional requests
-        inrelease_path = mirror_root / "dists" / suite / "InRelease"
-
-        # Try conditional request first if cached copy exists
-        if inrelease_path.exists():
-            # Query stored headers for conditional request
-            stored_etag: str | None = None
-            stored_last_modified: str | None = None
-            session = await self._db_provider.get_session("mirror")
-            try:
-                stmt = select(RepositoryFile).where(RepositoryFile.url == inrelease_url)
-                db_result = await session.execute(stmt)
-                existing = db_result.scalar_one_or_none()
-                if existing is not None:
-                    stored_etag = existing.etag
-                    stored_last_modified = existing.last_modified
-            finally:
-                await session.close()
-
-            is_unchanged = await self._download_coordinator.check_conditional(
-                inrelease_url,
-                etag=stored_etag,
-                last_modified=stored_last_modified,
-            )
-            if is_unchanged:
-                self._logger.info(
-                    "Suite is up-to-date (conditional request)",
-                    suite=suite,
-                    session_id=self._session_id,
-                )
-                return None
-
-        # Try InRelease first
-        dest_path = mirror_root / "dists" / suite / "InRelease"
-        result = await self._download_release_file(inrelease_url, dest_path)
-
-        # Fall back to Release if InRelease returned 404
-        if result is None:
-            dest_path = mirror_root / "dists" / suite / "Release"
-            result = await self._download_release_file(release_url, dest_path)
-
-        if result is None:
-            self._logger.error(
-                "Failed to download Release file",
-                suite=suite,
-                repository=config.name,
-                session_id=self._session_id,
-            )
-            self._result.files_failed += 1
-            return None
-
-        # Parse the Release file
-        content, file_url, response_headers = result
-        try:
-            release = self._release_parser.parse(content, url=file_url)
-        except ReleaseParseError as exc:
-            self._logger.error(
-                "Failed to parse Release file",
-                url=file_url,
-                error=str(exc),
-                session_id=self._session_id,
-            )
-            self._result.files_failed += 1
-            return None
-
-        # Extract ETag and Last-Modified from response headers
-        etag = None
-        last_modified = None
-        if response_headers:
-            etag = response_headers.get("ETag")
-            last_modified = response_headers.get("Last-Modified")
-
-        # Store as RepositoryFile with VERIFIED state
-        release_content_bytes = content.encode()
-        release_sha256 = hashlib.sha256(release_content_bytes).hexdigest()
-        await self._upsert_repository_file(
-            url=file_url,
-            sha256=release_sha256,
-            size_bytes=len(release_content_bytes),
-            state=RepositoryFileState.VERIFIED,
-            local_path=str(dest_path),
-            etag=etag,
-            last_modified=last_modified,
+    async def _check_release_unchanged(self, url: str, cached_path: Path) -> bool:
+        """Check if a cached Release file is still current via conditional request."""
+        return await _staging.check_release_unchanged(
+            self._db_provider,
+            self._download_coordinator,
+            url=url,
+            cached_path=cached_path,
         )
 
-        self._logger.debug(
-            "Release file downloaded and verified",
-            url=file_url,
-            session_id=self._session_id,
-            state="VERIFIED",
+    async def _parse_and_store_release(
+        self,
+        download_result: tuple[str, str, dict[str, str] | None],
+        dest_path: Path,
+    ) -> ReleaseMetadata | None:
+        """Parse a downloaded Release file and persist it as a RepositoryFile."""
+        release, downloaded, failed = await _staging.parse_and_store_release(
+            self._release_parser,
+            self._logger,
+            self._session_id,
+            download_result=download_result,
+            dest_path=dest_path,
+            upsert_fn=self._upsert_repository_file,
         )
-
-        self._result.files_downloaded += 1
+        self._result.files_downloaded += downloaded
+        self._result.files_failed += failed
         return release
 
     async def _stage_indexes(
@@ -510,25 +473,7 @@ class MirrorEngine:
         if not entries:
             return
 
-        # Deduplicate entries by relative_path to avoid concurrent downloads
-        # racing on the same destination file. This happens when arch-independent
-        # packages (_all.deb) appear in multiple architecture indexes.
-        seen_paths: set[str] = set()
-        unique_entries: list[FileEntry] = []
-        for entry in entries:
-            if entry.relative_path not in seen_paths:
-                seen_paths.add(entry.relative_path)
-                unique_entries.append(entry)
-        if len(unique_entries) < len(entries):
-            self._logger.debug(
-                "Deduplicated artifact entries",
-                original_count=len(entries),
-                unique_count=len(unique_entries),
-                duplicates_removed=len(entries) - len(unique_entries),
-                session_id=self._session_id,
-            )
-        entries = unique_entries
-
+        entries = self._deduplicate_entries(entries)
         base_url = config.base_url.rstrip("/")
         mirror_root = self._get_mirror_root(config)
 
@@ -553,7 +498,50 @@ class MirrorEngine:
         # Create RepositoryFile entities in QUEUED state
         await self._batch_create_repository_files(config, to_download, RepositoryFileState.QUEUED)
 
-        # Build download tasks
+        # Build and execute download tasks
+        tasks = self._build_download_tasks(to_download, base_url, mirror_root)
+        results = await self._download_coordinator.download_batch(
+            tasks=tasks,
+            max_concurrent=self._download_coordinator.config.max_connections_per_repo,
+        )
+
+        # Process results and update state
+        await self._process_artifact_results(to_download, tasks, results)
+
+    def _deduplicate_entries(self, entries: list[FileEntry]) -> list[FileEntry]:
+        """Remove duplicate entries by relative_path.
+
+        Deduplication avoids concurrent downloads racing on the same file,
+        which happens when arch-independent packages appear in multiple indexes.
+
+        Args:
+            entries: List of artifact file entries.
+
+        Returns:
+            Deduplicated list preserving first-seen order.
+        """
+        return _checksums.deduplicate_entries(
+            entries,
+            self._logger,
+            self._session_id,
+        )
+
+    def _build_download_tasks(
+        self,
+        to_download: list[FileEntry],
+        base_url: str,
+        mirror_root: Path,
+    ) -> list[DownloadTask]:
+        """Build DownloadTask objects for artifact entries.
+
+        Args:
+            to_download: File entries to create download tasks for.
+            base_url: Repository base URL.
+            mirror_root: Local mirror root path.
+
+        Returns:
+            List of DownloadTask objects ready for batch download.
+        """
         tasks: list[DownloadTask] = []
         for entry in to_download:
             url = f"{base_url}/{entry.relative_path}"
@@ -566,15 +554,22 @@ class MirrorEngine:
                     expected_size=entry.size_bytes,
                 )
             )
+        return tasks
 
-        # Execute batch download
-        results = await self._download_coordinator.download_batch(
-            tasks=tasks,
-            max_concurrent=self._download_coordinator._config.max_connections_per_repo,
-        )
+    async def _process_artifact_results(
+        self,
+        to_download: list[FileEntry],
+        tasks: list[DownloadTask],
+        results: list[DownloadResult],
+    ) -> None:
+        """Process batch download results and update RepositoryFile state.
 
-        # Process results and update state in batches
-        succeeded: list[tuple[str, str, int]] = []  # (url, local_path, bytes)
+        Args:
+            to_download: The file entries that were downloaded.
+            tasks: The download tasks that were executed.
+            results: Download results corresponding to each task.
+        """
+        succeeded: list[tuple[str, str, int]] = []
         failed_urls: list[str] = []
 
         for entry, task, result in zip(to_download, tasks, results, strict=True):
@@ -582,8 +577,6 @@ class MirrorEngine:
                 succeeded.append((task.url, str(task.dest_path), result.bytes_transferred))
                 self._result.files_downloaded += 1
                 self._result.bytes_transferred += result.bytes_transferred
-                # Extract package name from relative path
-                # (e.g., pool/main/l/lib/libfoo_1.0_amd64.deb → libfoo_1.0_amd64.deb)
                 package_name = Path(entry.relative_path).name
                 self._logger.debug(
                     "Artifact downloaded successfully",
@@ -604,10 +597,7 @@ class MirrorEngine:
                     session_id=self._session_id,
                 )
 
-        # Batch update succeeded files to VERIFIED
         await self._batch_update_state(succeeded, RepositoryFileState.VERIFIED)
-
-        # Batch update failed files to FAILED
         await self._batch_mark_failed(failed_urls)
 
     async def _stage_publish(self, config: RepositoryConfig) -> None:
@@ -685,48 +675,12 @@ class MirrorEngine:
         url: str,
         dest_path: Path,
     ) -> tuple[str, str, dict[str, str] | None] | None:
-        """Download a Release/InRelease file and return its content.
-
-        Creates parent directories as needed. Returns None if the
-        download fails (e.g., 404 for InRelease).
-
-        Args:
-            url: URL of the Release file to download.
-            dest_path: Local destination path.
-
-        Returns:
-            Tuple of (file_content, url, response_headers) on success,
-            None on failure.
-        """
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # For Release files, we download without strict size/hash validation
-        # since the Release file IS the source of truth for hashes.
-        # We use a dummy hash and accept any size.
-        # Download with relaxed validation for the Release file itself.
-        try:
-            result = await self._download_coordinator.download_file(
-                url=url,
-                dest_path=dest_path,
-                expected_sha256="",  # Will be overridden
-                expected_size=0,
-                timeout=60,
-            )
-        except Exception:
-            # If download_file raises (e.g., 404 HttpClientError), treat as failure
-            return None
-
-        # If the coordinator reports failure (e.g., 404), return None
-        if not result.success:
-            return None
-
-        # Read the downloaded content
-        try:
-            content = dest_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            return None
-
-        return (content, url, result.response_headers)
+        """Download a Release/InRelease file and return its content."""
+        return await _staging.download_release_file(
+            self._download_coordinator,
+            url=url,
+            dest_path=dest_path,
+        )
 
     async def _resume_interrupted_downloads(self) -> None:
         """Re-queue files stuck in DOWNLOADING state from a previous session.
@@ -747,7 +701,7 @@ class MirrorEngine:
             )
             await session.execute(stmt)
             await session.commit()
-        except Exception:
+        except SQLAlchemyError:
             await session.rollback()
             self._logger.error(
                 "Failed to resume interrupted downloads",
@@ -761,65 +715,25 @@ class MirrorEngine:
         url: str,
         sha256: str,
         size_bytes: int,
+        *,
         state: RepositoryFileState,
         local_path: str | None = None,
         etag: str | None = None,
         last_modified: str | None = None,
     ) -> None:
-        """Create or update a RepositoryFile entity keyed by URL.
-
-        If a RepositoryFile with the given URL exists, updates its fields.
-        Otherwise creates a new entity with the specified state.
-
-        Args:
-            url: Unique URL identifying the file.
-            sha256: SHA256 checksum of the file.
-            size_bytes: File size in bytes.
-            state: Target lifecycle state.
-            local_path: Local filesystem path (set on VERIFIED).
-            etag: ETag header from the HTTP response.
-            last_modified: Last-Modified header from the HTTP response.
-        """
-        session = await self._db_provider.get_session("mirror")
-        try:
-            stmt = select(RepositoryFile).where(RepositoryFile.url == url)
-            result = await session.execute(stmt)
-            existing = result.scalar_one_or_none()
-
-            if existing is not None:
-                existing.sha256 = sha256
-                existing.size_bytes = size_bytes
-                existing.state = state
-                existing.updated_at = datetime.now(UTC)
-                if local_path is not None:
-                    existing.local_path = local_path
-                if etag is not None:
-                    existing.etag = etag
-                if last_modified is not None:
-                    existing.last_modified = last_modified
-            else:
-                entity = RepositoryFile(
-                    url=url,
-                    sha256=sha256,
-                    size_bytes=size_bytes,
-                    state=state,
-                    retry_count=0,
-                    local_path=local_path,
-                    etag=etag,
-                    last_modified=last_modified,
-                )
-                session.add(entity)
-
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            self._logger.error(
-                "Failed to upsert RepositoryFile",
-                url=url,
-                session_id=self._session_id,
-            )
-        finally:
-            await session.close()
+        """Create or update a RepositoryFile entity keyed by URL."""
+        await _persistence.upsert_repository_file(
+            self._db_provider,
+            self._logger,
+            self._session_id,
+            url=url,
+            sha256=sha256,
+            size_bytes=size_bytes,
+            state=state,
+            local_path=local_path,
+            etag=etag,
+            last_modified=last_modified,
+        )
 
     async def _batch_create_repository_files(
         self,
@@ -827,146 +741,38 @@ class MirrorEngine:
         entries: list[FileEntry],
         state: RepositoryFileState,
     ) -> None:
-        """Create RepositoryFile entities in batches of ≤500.
-
-        Creates or updates entities for each file entry, committing
-        in batches to bound memory usage.
-
-        Args:
-            config: Repository configuration for URL construction.
-            entries: File entries to create entities for.
-            state: Initial state for created entities.
-        """
-        base_url = config.base_url.rstrip("/")
-        session = await self._db_provider.get_session("mirror")
-        try:
-            batch_count = 0
-            for entry in entries:
-                url = f"{base_url}/{entry.relative_path}"
-                stmt = select(RepositoryFile).where(RepositoryFile.url == url)
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
-
-                if existing is not None:
-                    existing.sha256 = entry.sha256
-                    existing.size_bytes = entry.size_bytes
-                    existing.state = state
-                    existing.updated_at = datetime.now(UTC)
-                else:
-                    entity = RepositoryFile(
-                        url=url,
-                        sha256=entry.sha256,
-                        size_bytes=entry.size_bytes,
-                        state=state,
-                        retry_count=0,
-                    )
-                    session.add(entity)
-
-                batch_count += 1
-                if batch_count >= _BATCH_SIZE:
-                    await session.commit()
-                    batch_count = 0
-
-            # Commit remaining
-            if batch_count > 0:
-                await session.commit()
-        except Exception:
-            await session.rollback()
-            self._logger.error(
-                "Failed to batch create RepositoryFiles",
-                session_id=self._session_id,
-            )
-        finally:
-            await session.close()
+        """Create RepositoryFile entities in batches of ≤500."""
+        await _persistence.batch_create_repository_files(
+            self._db_provider,
+            self._logger,
+            self._session_id,
+            config=config,
+            entries=entries,
+            state=state,
+        )
 
     async def _batch_update_state(
         self,
         succeeded: list[tuple[str, str, int]],
         state: RepositoryFileState,
     ) -> None:
-        """Update RepositoryFile entities to a new state in batches.
-
-        Commits in batches of ≤500 entities per transaction.
-
-        Args:
-            succeeded: List of (url, local_path, bytes_transferred) tuples.
-            state: Target state for the entities.
-        """
-        if not succeeded:
-            return
-
-        session = await self._db_provider.get_session("mirror")
-        try:
-            batch_count = 0
-            for url, local_path, _bytes in succeeded:
-                stmt = select(RepositoryFile).where(RepositoryFile.url == url)
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
-
-                if existing is not None:
-                    existing.state = state
-                    existing.local_path = local_path
-                    existing.updated_at = datetime.now(UTC)
-
-                batch_count += 1
-                if batch_count >= _BATCH_SIZE:
-                    await session.commit()
-                    batch_count = 0
-
-            if batch_count > 0:
-                await session.commit()
-        except Exception:
-            await session.rollback()
-            self._logger.error(
-                "Failed to batch update RepositoryFile states",
-                session_id=self._session_id,
-            )
-        finally:
-            await session.close()
+        """Update RepositoryFile entities to a new state in batches."""
+        await _persistence.batch_update_state(
+            self._db_provider,
+            self._logger,
+            self._session_id,
+            succeeded=succeeded,
+            state=state,
+        )
 
     async def _batch_mark_failed(self, failed_urls: list[str]) -> None:
-        """Mark RepositoryFile entities as FAILED in batches.
-
-        Increments retry_count and transitions to FAILED state.
-        Commits in batches of ≤500.
-
-        Args:
-            failed_urls: URLs of files that failed download.
-        """
-        if not failed_urls:
-            return
-
-        session = await self._db_provider.get_session("mirror")
-        try:
-            batch_count = 0
-            for url in failed_urls:
-                stmt = select(RepositoryFile).where(RepositoryFile.url == url)
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
-
-                if existing is not None:
-                    existing.retry_count += 1
-                    if existing.retry_count >= _MAX_RETRIES:
-                        existing.state = RepositoryFileState.FAILED
-                    else:
-                        existing.state = RepositoryFileState.QUEUED
-                    existing.updated_at = datetime.now(UTC)
-
-                batch_count += 1
-                if batch_count >= _BATCH_SIZE:
-                    await session.commit()
-                    batch_count = 0
-
-            if batch_count > 0:
-                await session.commit()
-        except Exception:
-            await session.rollback()
-            self._logger.error(
-                "Failed to batch mark RepositoryFiles as failed",
-                session_id=self._session_id,
-            )
-        finally:
-            await session.close()
+        """Mark RepositoryFile entities as FAILED in batches."""
+        await _persistence.batch_mark_failed(
+            self._db_provider,
+            self._logger,
+            self._session_id,
+            failed_urls=failed_urls,
+        )
 
     async def _get_local_checksums(
         self,
@@ -987,25 +793,12 @@ class MirrorEngine:
         Returns:
             Dictionary mapping relative_path to sha256 hex digest.
         """
-        base_url = config.base_url.rstrip("/")
-        checksums: dict[str, str] = {}
-
-        session = await self._db_provider.get_session("mirror")
-        try:
-            for path in paths:
-                url = f"{base_url}/dists/{suite}/{path}"
-                stmt = select(RepositoryFile).where(
-                    RepositoryFile.url == url,
-                    RepositoryFile.state == RepositoryFileState.VERIFIED,
-                )
-                result = await session.execute(stmt)
-                entity = result.scalar_one_or_none()
-                if entity is not None:
-                    checksums[path] = entity.sha256
-        finally:
-            await session.close()
-
-        return checksums
+        return await _checksums.get_local_checksums(
+            self._db_provider,
+            config,
+            suite,
+            paths,
+        )
 
     async def _get_artifact_checksums(
         self,
@@ -1024,30 +817,11 @@ class MirrorEngine:
         Returns:
             Dictionary mapping relative_path to sha256 hex digest.
         """
-        base_url = config.base_url.rstrip("/")
-        checksums: dict[str, str] = {}
-
-        session = await self._db_provider.get_session("mirror")
-        try:
-            for entry in entries:
-                url = f"{base_url}/{entry.relative_path}"
-                stmt = select(RepositoryFile).where(
-                    RepositoryFile.url == url,
-                    RepositoryFile.state.in_(
-                        [
-                            RepositoryFileState.VERIFIED,
-                            RepositoryFileState.INDEXED,
-                        ]
-                    ),
-                )
-                result = await session.execute(stmt)
-                entity = result.scalar_one_or_none()
-                if entity is not None:
-                    checksums[entry.relative_path] = entity.sha256
-        finally:
-            await session.close()
-
-        return checksums
+        return await _checksums.get_artifact_checksums(
+            self._db_provider,
+            config,
+            entries,
+        )
 
     def _parse_packages_file(self, path: Path) -> list[FileEntry]:
         """Parse a Packages.gz file from disk to extract artifact entries.

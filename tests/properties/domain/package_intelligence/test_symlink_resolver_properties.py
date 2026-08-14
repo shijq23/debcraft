@@ -13,7 +13,7 @@ import signal
 from typing import TYPE_CHECKING
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.package_intelligence.symlink_resolver import SymlinkResolver
@@ -180,7 +180,6 @@ class TestProperty15SymlinkResolutionTerminatesWithinBounds:
     **Validates: Requirements 8.5, 8.7**
     """
 
-    @settings(max_examples=100)
     @given(data=_symlink_chain_no_cycle())
     def test_linear_chain_terminates(
         self,
@@ -223,7 +222,6 @@ class TestProperty15SymlinkResolutionTerminatesWithinBounds:
             )
             assert result.failure_reason is not None
 
-    @settings(max_examples=100)
     @given(data=_symlink_chain_with_cycle())
     def test_cyclic_chain_terminates(
         self,
@@ -297,7 +295,6 @@ class TestProperty16SymlinkRelativePathResolution:
     **Validates: Requirements 8.2**
     """
 
-    @settings(max_examples=100)
     @given(data=_relative_symlink_scenario())
     def test_relative_path_resolution(
         self,

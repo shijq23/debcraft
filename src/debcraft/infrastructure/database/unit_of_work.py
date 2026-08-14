@@ -182,9 +182,6 @@ class SqliteUnitOfWork(UnitOfWork):
                 # Clean exit — attempt commit
                 try:
                     await self.commit()
-                except StorageError:
-                    # commit() already handles cancellation rollback
-                    raise
                 except SQLAlchemyError as exc:
                     await session.rollback()
                     msg = f"Commit failed for database '{self._db_name}'"

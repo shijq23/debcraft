@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.cli.mirror import _CliDatabaseProvider
@@ -39,7 +39,6 @@ class TestCliDatabaseProviderPreservation:
     - Arbitrary sequences of these operations are safe
     """
 
-    @settings(max_examples=50)
     @given(call_count=st.integers(min_value=1, max_value=10))
     def test_dispose_never_raises_regardless_of_call_count(self, call_count: int) -> None:
         """dispose() completes without error for any number of repeated calls.
@@ -57,7 +56,6 @@ class TestCliDatabaseProviderPreservation:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50)
     @given(call_count=st.integers(min_value=1, max_value=10))
     def test_health_check_returns_dict_without_crash(self, call_count: int) -> None:
         """health_check() returns a dict and never crashes for any number of calls.
@@ -78,7 +76,6 @@ class TestCliDatabaseProviderPreservation:
         result = asyncio.run(_run())
         assert isinstance(result, dict), f"health_check() returned {type(result).__name__}, expected dict"
 
-    @settings(max_examples=100)
     @given(
         operations=st.lists(
             _OPERATIONS,
@@ -110,7 +107,6 @@ class TestCliDatabaseProviderPreservation:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50)
     @given(db_name=st.sampled_from(["mirror", "metadata", "cache"]))
     def test_dispose_after_get_session_does_not_raise(self, db_name: str) -> None:
         """dispose() completes without error even after get_session was called.
@@ -130,7 +126,6 @@ class TestCliDatabaseProviderPreservation:
 
         asyncio.run(_run())
 
-    @settings(max_examples=50)
     @given(db_name=st.sampled_from(["mirror", "metadata", "cache"]))
     def test_health_check_after_get_session_returns_dict(self, db_name: str) -> None:
         """health_check() returns a dict even after get_session was called.

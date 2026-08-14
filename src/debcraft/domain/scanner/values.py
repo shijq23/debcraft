@@ -7,8 +7,10 @@ access and are produced by scanner implementations and enrichment services.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path as _Path
 
 
 class ArtifactType(Enum):
@@ -43,6 +45,49 @@ VALID_PACKAGE_STATUSES = frozenset(
         "inferred",
     }
 )
+
+
+_EXTENSION_MAP: dict[str, ArtifactType] = {
+    ".iso": ArtifactType.ISO,
+    ".qcow2": ArtifactType.QCOW2,
+    ".img": ArtifactType.IMG,
+    ".tar": ArtifactType.DOCKER,
+    ".tar.gz": ArtifactType.DOCKER,
+    ".tgz": ArtifactType.DOCKER,
+    ".oci": ArtifactType.OCI,
+    ".ami": ArtifactType.AMI,
+}
+
+
+def detect_artifact_type(path: str) -> ArtifactType:
+    """Detect artifact type from file extension or path characteristics.
+
+    Checks if path is a directory first, then matches against known
+    extensions. Falls back to DIRECTORY for unrecognized extensions.
+
+    Args:
+        path: The filesystem path to the artifact.
+
+    Returns:
+        The detected ArtifactType.
+    """
+    if os.path.isdir(path):
+        return ArtifactType.DIRECTORY
+
+    p = _Path(path)
+
+    # Handle compound extensions like .tar.gz
+    suffixes = "".join(p.suffixes).lower()
+    for ext, artifact_type in _EXTENSION_MAP.items():
+        if suffixes.endswith(ext):
+            return artifact_type
+
+    # Single extension fallback
+    ext = p.suffix.lower()
+    if ext in _EXTENSION_MAP:
+        return _EXTENSION_MAP[ext]
+
+    return ArtifactType.DIRECTORY
 
 
 @dataclass(frozen=True)

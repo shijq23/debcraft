@@ -22,7 +22,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -80,7 +80,6 @@ class TestMigrationOrdering:
     migrations.
     """
 
-    @settings(max_examples=200)
     @given(
         version_order=st.permutations(range(1, 6)),
     )
@@ -135,7 +134,6 @@ class TestMigrationOrdering:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         version_order=st.permutations(range(1, 6)),
     )
@@ -205,7 +203,6 @@ class TestMigrationHistoryRecording:
     a non-negative duration in milliseconds.
     """
 
-    @settings(max_examples=200)
     @given(
         version_order=st.permutations(range(1, 6)),
     )

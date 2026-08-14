@@ -20,6 +20,8 @@ lint:
 	uv run basedpyright
 	uv run mypy
 	uv run lint-imports
+	uv run pylint src/
+	uv run pre-commit run --all-files
 
 clean:
 	rm -rf dist/
@@ -29,6 +31,7 @@ clean:
 	rm -rf .ruff_cache/
 	rm -rf .pytest_cache/
 	rm -rf .mypy_cache/
+	rm -rf .import_linter_cache/
 	rm -rf .coverage
 	rm -rf htmlcov/
 

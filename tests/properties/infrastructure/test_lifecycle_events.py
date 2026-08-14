@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -94,7 +94,6 @@ class TestLifecycleEventPublication:
     application), the EventBus receives a DomainEvent of the corresponding type.
     """
 
-    @settings(max_examples=200)
     @given(
         actions=st.lists(
             st.sampled_from(["initialize", "shutdown"]),
@@ -148,7 +147,6 @@ class TestLifecycleEventPublication:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         num_migrations=st.integers(min_value=1, max_value=10),
     )
@@ -213,7 +211,6 @@ class TestLifecycleEventPublication:
 
         asyncio.run(_run())
 
-    @settings(max_examples=200)
     @given(
         num_migrations=st.integers(min_value=1, max_value=5),
     )

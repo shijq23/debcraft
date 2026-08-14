@@ -22,7 +22,7 @@ pair formatted as "{component}/binary-{architecture}/Packages.gz".
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from debcraft.domain.mirror.comparator import FileComparator, generate_index_paths
@@ -89,7 +89,6 @@ class TestProperty3MatchingChecksumsSkip:
     FileComparator SHALL produce a SyncDecision with action="skip".
     """
 
-    @settings(max_examples=200)
     @given(entry=_file_entry_strategy())
     def test_matching_sha256_produces_skip(self, entry: FileEntry) -> None:
         """**Validates: Requirements 1.3**.
@@ -106,7 +105,6 @@ class TestProperty3MatchingChecksumsSkip:
         assert decisions[0].action == "skip"
         assert decisions[0].file_entry == entry
 
-    @settings(max_examples=200)
     @given(
         entry=_file_entry_strategy(),
         extra_paths=st.dictionaries(
@@ -149,7 +147,6 @@ class TestProperty4MismatchedOrAbsentChecksumsDownload:
     sha256, the FileComparator SHALL produce a SyncDecision with action="download".
     """
 
-    @settings(max_examples=200)
     @given(entry=_file_entry_strategy())
     def test_absent_path_produces_download(self, entry: FileEntry) -> None:
         """**Validates: Requirements 2.1**.
@@ -166,7 +163,6 @@ class TestProperty4MismatchedOrAbsentChecksumsDownload:
         assert decisions[0].action == "download"
         assert decisions[0].file_entry == entry
 
-    @settings(max_examples=200)
     @given(
         entry=_file_entry_strategy(),
         different_sha256=_sha256_strategy,
@@ -191,7 +187,6 @@ class TestProperty4MismatchedOrAbsentChecksumsDownload:
         assert decisions[0].action == "download"
         assert decisions[0].file_entry == entry
 
-    @settings(max_examples=200)
     @given(
         entry=_file_entry_strategy(),
         other_paths=st.dictionaries(
@@ -238,7 +233,6 @@ class TestProperty5CartesianProductPathGeneration:
     pair formatted as "{component}/binary-{architecture}/Packages.gz".
     """
 
-    @settings(max_examples=200)
     @given(
         components=st.lists(_component_strategy, min_size=1, max_size=10),
         architectures=st.lists(_architecture_strategy, min_size=1, max_size=10),
@@ -253,7 +247,6 @@ class TestProperty5CartesianProductPathGeneration:
         expected_count = len(components) * len(architectures)
         assert len(paths) == expected_count
 
-    @settings(max_examples=200)
     @given(
         components=st.lists(_component_strategy, min_size=1, max_size=10, unique=True),
         architectures=st.lists(_architecture_strategy, min_size=1, max_size=10, unique=True),
@@ -268,7 +261,6 @@ class TestProperty5CartesianProductPathGeneration:
 
         assert len(paths) == len(set(paths))
 
-    @settings(max_examples=200)
     @given(
         components=st.lists(_component_strategy, min_size=1, max_size=10, unique=True),
         architectures=st.lists(_architecture_strategy, min_size=1, max_size=10, unique=True),
@@ -291,7 +283,6 @@ class TestProperty5CartesianProductPathGeneration:
             arch_segment = parts[-2]
             assert arch_segment.startswith("binary-"), f"Segment '{arch_segment}' does not start with 'binary-'"
 
-    @settings(max_examples=200)
     @given(
         components=st.lists(_component_strategy, min_size=1, max_size=10, unique=True),
         architectures=st.lists(_architecture_strategy, min_size=1, max_size=10, unique=True),

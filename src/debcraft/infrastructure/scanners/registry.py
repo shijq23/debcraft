@@ -45,6 +45,54 @@ class ScannerRegistry:
         """Currently registered artifact types."""
         return list(self._scanners.keys())
 
+    def register(self, artifact_type: ArtifactType, scanner: ArtifactScanner, *, priority: int | None = None) -> None:
+        """Register a pre-built scanner instance for an artifact type.
+
+        Validates that the scanner conforms to the ArtifactScanner protocol
+        (has an async ``scan`` method) and stores it with priority-based
+        selection.
+
+        Parameters
+        ----------
+        artifact_type : ArtifactType
+            The artifact type this scanner handles.
+        scanner : ArtifactScanner
+            A pre-built scanner instance conforming to the ArtifactScanner
+            protocol.
+        priority : int or None, optional
+            Priority for selection when multiple scanners target the same
+            artifact type. Higher values win. If None, reads from
+            ``scanner.priority`` (defaulting to 0).
+
+        Raises:
+        ------
+        ValueError
+            If the scanner does not conform to the ArtifactScanner protocol
+            (missing async ``scan`` method).
+        """
+        if not self._validate_protocol(scanner):
+            raise ValueError(
+                f"Scanner {scanner!r} does not conform to ArtifactScanner protocol: missing async 'scan' method"
+            )
+
+        if priority is None:
+            priority = getattr(scanner, "priority", 0)
+        if not isinstance(priority, int):
+            priority = 0
+
+        existing = self._priorities.get(artifact_type)
+        if existing is not None:
+            existing_priority, _ = existing
+            # Higher priority wins; equal priority keeps existing
+            if priority < existing_priority:
+                return
+            if priority == existing_priority:
+                return
+
+        name = getattr(scanner, "__class__", type(scanner)).__name__
+        self._scanners[artifact_type] = scanner
+        self._priorities[artifact_type] = (priority, name)
+
     def load_from_entry_points(self) -> None:
         """Discover and register scanners from entry points.
 
@@ -59,7 +107,7 @@ class ScannerRegistry:
         """
         try:
             entry_points = importlib.metadata.entry_points(group="debcraft.scanners")
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Plugin loader: entry point discovery can fail unpredictably
             self._diagnostics.append(f"Failed to query entry points for 'debcraft.scanners': {exc}")
             return
 
@@ -96,8 +144,16 @@ class ScannerRegistry:
         # Step a: Attempt to load
         try:
             loaded = ep.load()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Plugin loader: arbitrary plugin code may raise anything
             self._diagnostics.append(f"Failed to load entry point '{ep.name}': {exc}")
+            return
+
+        # Detect class vs instance — classes cannot be used directly as scanners
+        if inspect.isclass(loaded):
+            self._diagnostics.append(
+                f"Entry point '{ep.name}' returned a class ({loaded.__name__}), not an instance. "
+                f"Use registry.register() with a pre-built instance instead."
+            )
             return
 
         # Step b: Validate protocol conformance

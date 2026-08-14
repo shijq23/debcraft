@@ -41,8 +41,8 @@ from debcraft.infrastructure.mirror.download import (
 # Strategies
 # ---------------------------------------------------------------------------
 
-# HTTP 4xx status codes (client errors, non-retriable)
-_http_4xx_strategy = st.integers(min_value=400, max_value=499)
+# HTTP 4xx status codes (client errors, non-retriable) — excluding 429 which is HttpRateLimitError
+_http_4xx_strategy = st.integers(min_value=400, max_value=499).filter(lambda x: x != 429)
 
 # HTTP 5xx status codes (server errors, retriable)
 _http_5xx_strategy = st.integers(min_value=500, max_value=599)
@@ -113,7 +113,6 @@ class TestPreservation4xxImmediateFailure:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -181,7 +180,6 @@ class TestPreservation5xxRetryBehavior:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -248,7 +246,6 @@ class TestPreservationSuccessfulDownload:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -313,7 +310,6 @@ class TestPreservationBackoffComputation:
     **Validates: Requirements 3.2**
     """
 
-    @settings(max_examples=200)
     @given(attempt=_attempt_strategy)
     def test_backoff_delay_within_expected_bounds(self, attempt: int) -> None:
         """For any attempt number, the computed delay is within [base, base * 1.25]."""
@@ -324,7 +320,6 @@ class TestPreservationBackoffComputation:
         assert delay >= base, f"Delay {delay} < base {base} for attempt {attempt}"
         assert delay <= max_with_jitter, f"Delay {delay} > max {max_with_jitter} for attempt {attempt}"
 
-    @settings(max_examples=200)
     @given(attempt=_attempt_strategy)
     def test_backoff_delay_never_exceeds_absolute_max(self, attempt: int) -> None:
         """The delay never exceeds _MAX_BACKOFF * (1 + _JITTER_FACTOR) regardless of attempt number."""
@@ -332,7 +327,6 @@ class TestPreservationBackoffComputation:
         absolute_max = _MAX_BACKOFF * (1 + _JITTER_FACTOR)
         assert delay <= absolute_max, f"Delay {delay} exceeds absolute max {absolute_max}"
 
-    @settings(max_examples=200)
     @given(attempt=_attempt_strategy)
     def test_backoff_delay_is_non_negative(self, attempt: int) -> None:
         """The delay is always non-negative."""
@@ -355,7 +349,6 @@ class TestPreservationChecksumAndSizeRetry:
     """
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -409,7 +402,6 @@ class TestPreservationChecksumAndSizeRetry:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     @settings(
-        max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -477,7 +469,6 @@ class TestPreservationNetworkErrorRetry:
     """
 
     @settings(
-        max_examples=20,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
@@ -545,7 +536,6 @@ class TestPreservationDownloadBatch:
     """
 
     @settings(
-        max_examples=20,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
         deadline=None,
     )
