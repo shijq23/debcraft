@@ -540,7 +540,7 @@ class TestProperty5MetadataRegenerationIdempotence:
     @staticmethod
     def _project_root() -> Path:
         """Return the project root directory."""
-        return Path(__file__).parent.parent
+        return Path(__file__).parent.parent.parent
 
     def test_metadata_regeneration_produces_identical_packages_files(self, tmp_path: Path) -> None:
         """Running metadata generation twice produces identical Packages files."""
@@ -777,7 +777,7 @@ class TestProperty6ReleaseFileParsability:
     @staticmethod
     def _project_root() -> Path:
         """Return the project root directory."""
-        return Path(__file__).parent.parent
+        return Path(__file__).parent.parent.parent
 
     def test_release_file_parses_with_release_parser(self, tmp_path: Path) -> None:
         """Generated Release file parses successfully with ReleaseParser."""
@@ -888,7 +888,7 @@ class TestEndToEndFlowAndSizeConstraints:
     @staticmethod
     def _project_root() -> Path:
         """Return the project root directory."""
-        return Path(__file__).parent.parent
+        return Path(__file__).parent.parent.parent
 
     def test_built_deb_is_under_5kb(self, tmp_path: Path) -> None:
         """Built .deb for empty package is under 5KB (Req 5.1)."""
