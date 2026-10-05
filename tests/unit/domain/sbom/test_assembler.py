@@ -258,6 +258,20 @@ class TestDependsOnRelationships:
         depends_rels = [r for r in doc.relationships if r.relationship_type == RelationshipType.DEPENDS_ON]
         assert len(depends_rels) == 2
 
+    def test_depends_on_deduplicates_repeated_dependency(
+        self, assembler: ModelAssembler, basic_scan_result: ScanResult
+    ):
+        pkg_a = EnrichedPackage(
+            package=IdentifiedPackage(name="libfoo", version="1.0", architecture="amd64", status="installed"),
+            enrichment=PackageEnrichment(depends="libbar (>= 2.0), libbar"),
+        )
+        pkg_b = EnrichedPackage(
+            package=IdentifiedPackage(name="libbar", version="2.0", architecture="amd64", status="installed"),
+        )
+        doc = assembler.assemble(basic_scan_result, [pkg_a, pkg_b])
+        depends_rels = [r for r in doc.relationships if r.relationship_type == RelationshipType.DEPENDS_ON]
+        assert len(depends_rels) == 1
+
 
 class TestSpdxIdGeneration:
     """AC 2.7: Unique SPDX IDs with collision suffix."""

@@ -269,9 +269,12 @@ class ModelAssembler:
 
         Parses the depends field as comma-separated dependency specifications.
         Extracts the package name (portion before version constraint in parens)
-        and generates DEPENDS_ON relationships for matching packages.
+        and generates DEPENDS_ON relationships for matching packages. A
+        (source, target) pair named more than once is emitted only once, keeping
+        the order of its first occurrence.
         """
         relationships: list[SBOMRelationship] = []
+        seen_pairs: set[tuple[str, str]] = set()
 
         if enriched_pkg.enrichment is None or enriched_pkg.enrichment.depends is None:
             return relationships
@@ -292,6 +295,10 @@ class ModelAssembler:
 
             if dep_name and dep_name in name_to_spdx_id:
                 target_spdx_id = name_to_spdx_id[dep_name]
+                pair = (source_spdx_id, target_spdx_id)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
                 relationships.append(
                     SBOMRelationship(
                         source_id=source_spdx_id,

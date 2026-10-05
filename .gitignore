@@ -227,3 +227,5 @@ fixtures/images/
 
 # SBOM run output
 .agents/sbom-run/
+.agents/sbom-run-2/
+.agents/tasks/
