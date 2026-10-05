@@ -221,3 +221,9 @@ __marimo__/
 
 # Test fixture images
 fixtures/images/
+
+# ISO images
+*.iso
+
+# SBOM run output
+.agents/sbom-run/
