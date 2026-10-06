@@ -3,7 +3,7 @@ name = "debcraft"
 version = "0.1.0"
 description = "Artifact Intelligence Platform for Debian-based ecosystems"
 requires-python = ">=3.13"
-license = "MIT"
+license = "Apache-2.0"
 readme = "README.md"
 dependencies = [
     "aiohttp>=3.9",
