@@ -2,6 +2,7 @@
 
 import importlib.metadata
 import logging
+import re
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +13,19 @@ from debcraft.cli import app
 from debcraft.version import VERSION
 
 runner = CliRunner()
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI SGR escape sequences from captured CLI output.
+
+    Typer forces Rich into terminal mode whenever ``GITHUB_ACTIONS``,
+    ``FORCE_COLOR`` or ``PY_COLORS`` is set, which styles each help token
+    separately (``--format`` becomes ``ESC[1;36m-ESC[0mESC[1;36m-formatESC[0m``).
+    Stripping the escapes keeps assertions on option names environment-agnostic.
+    """
+    return _ANSI_ESCAPE_RE.sub("", text)
 
 
 @pytest.mark.unit
@@ -87,11 +101,12 @@ def test_sbom_help_shows_arguments():
     """The sbom command help shows its arguments and options."""
     result = runner.invoke(app, ["sbom", "--help"])
     assert result.exit_code == 0
+    output = strip_ansi(result.output)
     # Should show the artifact_path argument
-    assert "artifact_path" in result.output.lower() or "artifact-path" in result.output.lower()
+    assert "artifact_path" in output.lower() or "artifact-path" in output.lower()
     # Should show key options
-    assert "--format" in result.output
-    assert "--output-dir" in result.output
+    assert "--format" in output
+    assert "--output-dir" in output
 
 
 @pytest.mark.unit
