@@ -14,6 +14,7 @@ import tarfile
 import time
 from typing import TYPE_CHECKING
 
+from debcraft.domain._archive_paths import normalize_tar_member_name
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
 from debcraft.domain.scanner.values import ScanningStrategy, ScanResult
 from debcraft.infrastructure.scanners._mixin import ScannerMixin
@@ -286,6 +287,11 @@ class DockerScanner(ScannerMixin):
         the list of all entry names (including whiteout markers) for subsequent
         whiteout processing.
 
+        Member names are normalized by removing a leading ``./`` or ``/``
+        *prefix* (see ``normalize_tar_member_name``), which preserves a
+        dot-prefixed first component such as ``.dockerenv``. The archive root
+        member (``.`` or ``./``) is skipped: it is a directory, not a file.
+
         Args:
             vfs: The virtual filesystem dict to merge into.
             layer_tar: An opened tarfile for the layer.
@@ -296,9 +302,10 @@ class DockerScanner(ScannerMixin):
         entries: list[str] = []
 
         for member in layer_tar.getmembers():
-            # Normalize the path (strip leading ./ or /)
-            name = member.name.lstrip("./")
-            if not name:
+            name = normalize_tar_member_name(member.name)
+            # Skip the archive root member: "./" normalizes to "" and "." stays
+            # "." — neither names a file inside the layer.
+            if not name or name == ".":
                 continue
 
             entries.append(name)

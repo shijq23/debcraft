@@ -398,3 +398,63 @@ class TestFullParse:
         assert len(result.dependencies) == 3  # 2 from Depends + 1 from Recommends
         assert result.copyright_text == copyright_text
         assert len(result.file_listing) == 3
+
+
+@pytest.mark.unit
+class TestDotPrefixedMemberNames:
+    """Tar member names are normalized by prefix removal, not character stripping.
+
+    ``member.name.lstrip("./")`` strips a *set of characters*, so a decoy member
+    whose first component starts with a dot collapsed onto the real target name
+    (``"./.control"`` -> ``"control"``) and was matched first. Prefix removal
+    keeps the leading dot, so only the genuine member matches.
+    """
+
+    def test_dot_prefixed_decoy_does_not_shadow_control(self) -> None:
+        # "./.control" is inserted first: the old normalization turned it into
+        # "control" and the parser read the decoy.
+        control_tar = _make_tar_bytes(
+            {
+                "./.control": "Package: decoy\nVersion: 0.0\nArchitecture: all\n",
+                "./control": "Package: real\nVersion: 1.0\nArchitecture: amd64\n",
+            }
+        )
+        data_tar = _make_tar_bytes({"./usr/bin/real": ""})
+        reader = FakeFileReader(control_tar=control_tar, data_tar=data_tar)
+        parser = DebParser(reader)
+        result = parser.parse("/fake/real.deb")
+
+        assert result.package_name == "real"
+        assert result.version == "1.0"
+
+    def test_dot_prefixed_decoy_does_not_shadow_copyright(self) -> None:
+        control_tar = _make_tar_bytes({"./control": "Package: mypkg\nVersion: 1.0\nArchitecture: all\n"})
+        genuine = "Genuine copyright text\n"
+        # "./.usr/..." normalized to "usr/..." under the old code and won.
+        data_tar = _make_tar_bytes(
+            {
+                "./.usr/share/doc/mypkg/copyright": "Decoy copyright text\n",
+                "./usr/share/doc/mypkg/copyright": genuine,
+            }
+        )
+        reader = FakeFileReader(control_tar=control_tar, data_tar=data_tar)
+        parser = DebParser(reader)
+        result = parser.parse("/fake/mypkg.deb")
+
+        assert result.copyright_text == genuine
+
+    def test_dot_prefixed_ordinary_member_is_ignored(self) -> None:
+        """``./.hidden`` is not mistaken for ``hidden`` and breaks nothing."""
+        control_tar = _make_tar_bytes(
+            {
+                "./.hidden": "Package: nope\n",
+                "./control": "Package: visible\nVersion: 2.0\nArchitecture: all\n",
+            }
+        )
+        data_tar = _make_tar_bytes({"./.hidden": "", "./usr/bin/visible": ""})
+        reader = FakeFileReader(control_tar=control_tar, data_tar=data_tar)
+        parser = DebParser(reader)
+        result = parser.parse("/fake/visible.deb")
+
+        assert result.package_name == "visible"
+        assert result.copyright_text is None

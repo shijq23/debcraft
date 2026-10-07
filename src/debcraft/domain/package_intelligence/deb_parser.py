@@ -13,6 +13,7 @@ import re
 import tarfile
 from typing import TYPE_CHECKING
 
+from debcraft.domain._archive_paths import normalize_tar_member_name
 from debcraft.domain.package_intelligence.errors import (
     DebParseError,
     DependencyParseError,
@@ -164,7 +165,7 @@ class DebParser:
             with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:") as tar:
                 # Look for the control file - may be "./control" or "control"
                 for member in tar.getmembers():
-                    name = member.name.lstrip("./")
+                    name = normalize_tar_member_name(member.name)
                     if name == "control" and member.isfile():
                         extracted = tar.extractfile(member)
                         if extracted is None:
@@ -409,7 +410,7 @@ class DebParser:
         try:
             with tarfile.open(fileobj=io.BytesIO(data_tar_bytes), mode="r:") as tar:
                 for member in tar.getmembers():
-                    normalized = member.name.lstrip("./")
+                    normalized = normalize_tar_member_name(member.name)
                     if normalized == f"usr/share/doc/{package_name}/copyright" and member.isfile():
                         extracted = tar.extractfile(member)
                         if extracted is not None:
