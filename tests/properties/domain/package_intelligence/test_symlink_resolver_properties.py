@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import posixpath
-import signal
 from typing import TYPE_CHECKING
 
 import pytest
@@ -28,25 +27,50 @@ if TYPE_CHECKING:
 # ===========================================================================
 
 
+class _LookupBudgetError(Exception):
+    """Raised when the resolver asks for more lookups than it is allowed."""
+
+
 class FakeContentsLookup:
     """A fake ContentsLookupPort that uses a dict-based mapping.
 
     Supports configuring:
     - file_owners: maps file paths to owning package names
     - copyright_contents: maps package names to their copyright content
+    - max_lookups: hard budget of ``find_owner`` calls before raising
+
+    The lookup budget is the portable termination proof: the resolver can
+    only make progress by calling ``find_owner`` once per hop, so a runaway
+    loop trips the budget deterministically instead of hanging. It replaces
+    a ``signal.SIGALRM`` watchdog, which does not exist on Windows.
     """
 
     def __init__(
         self,
         file_owners: dict[str, str] | None = None,
         copyright_contents: dict[str, str] | None = None,
+        max_lookups: int = SymlinkResolver.MAX_RESOLUTION_DEPTH + 5,
     ) -> None:
-        """Initialize with optional mappings."""
+        """Initialize with optional mappings and a lookup budget."""
         self._file_owners: dict[str, str] = file_owners or {}
         self._copyright_contents: dict[str, str] = copyright_contents or {}
+        self._max_lookups = max_lookups
+        self.lookup_count = 0
 
     def find_owner(self, file_path: str) -> str | None:
-        """Return the owner package for a path, or None."""
+        """Return the owner package for a path, or None.
+
+        Raises:
+            _LookupBudgetError: If the configured lookup budget is spent,
+                which means the resolver failed to terminate.
+        """
+        self.lookup_count += 1
+        if self.lookup_count > self._max_lookups:
+            msg = (
+                f"find_owner called {self.lookup_count} times, budget is "
+                f"{self._max_lookups}: resolver did not terminate"
+            )
+            raise _LookupBudgetError(msg)
         return self._file_owners.get(file_path)
 
     def get_copyright_content(self, package_name: str) -> str | None:
@@ -158,15 +182,6 @@ def _symlink_chain_with_cycle(draw: st.DrawFn) -> tuple[FakeContentsLookup, str,
 # ===========================================================================
 
 
-class _TimeoutError(Exception):
-    """Raised when a function call exceeds time limit."""
-
-
-def _timeout_handler(signum: int, frame: object) -> None:
-    """Signal handler for SIGALRM timeout."""
-    raise _TimeoutError("Function did not terminate within time limit")
-
-
 @pytest.mark.unit
 @pytest.mark.package
 class TestProperty15SymlinkResolutionTerminatesWithinBounds:
@@ -189,16 +204,15 @@ class TestProperty15SymlinkResolutionTerminatesWithinBounds:
         depth, fake_lookup, initial_target, source_dir = data
         resolver = SymlinkResolver(fake_lookup)
 
-        # Use a timeout to ensure the function always returns
-        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(5)  # 5 second timeout
-        try:
-            result = resolver.resolve(initial_target, source_dir)
-        except _TimeoutError:
-            pytest.fail(f"SymlinkResolver.resolve() did not terminate for chain depth {depth}")
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+        # Termination is proven structurally: the resolver consumes one
+        # find_owner lookup per hop, and the fake raises once the budget is
+        # spent, so a runaway loop fails here instead of hanging.
+        result = resolver.resolve(initial_target, source_dir)
+
+        assert fake_lookup.lookup_count <= SymlinkResolver.MAX_RESOLUTION_DEPTH, (
+            f"resolve() used {fake_lookup.lookup_count} lookups for chain depth {depth}; "
+            f"must stay within MAX_RESOLUTION_DEPTH={SymlinkResolver.MAX_RESOLUTION_DEPTH}"
+        )
 
         # Verify result type
         assert isinstance(result, SymlinkResolutionResult)
@@ -231,16 +245,14 @@ class TestProperty15SymlinkResolutionTerminatesWithinBounds:
         fake_lookup, initial_target, source_dir = data
         resolver = SymlinkResolver(fake_lookup)
 
-        # Use a timeout to ensure the function always returns
-        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(5)  # 5 second timeout
-        try:
-            result = resolver.resolve(initial_target, source_dir)
-        except _TimeoutError:
-            pytest.fail("SymlinkResolver.resolve() did not terminate for cyclic chain")
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+        # Termination is proven structurally via the fake's lookup budget;
+        # a cycle that is never detected would exhaust it and raise.
+        result = resolver.resolve(initial_target, source_dir)
+
+        assert fake_lookup.lookup_count <= SymlinkResolver.MAX_RESOLUTION_DEPTH, (
+            f"resolve() used {fake_lookup.lookup_count} lookups on a cyclic chain; "
+            f"must stay within MAX_RESOLUTION_DEPTH={SymlinkResolver.MAX_RESOLUTION_DEPTH}"
+        )
 
         # Cyclic chains must always fail
         assert isinstance(result, SymlinkResolutionResult)

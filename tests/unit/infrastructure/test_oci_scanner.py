@@ -308,6 +308,49 @@ class TestOCIWhiteoutHandling:
         assert len(result.packages) == 1
 
 
+class TestOCIWhiteoutPathSemantics:
+    """Direct tests pinning forward-slash whiteout path math (Req 6.6).
+
+    Layer entry names are tar member names and are always forward-slash
+    separated. These deterministic cases guard the already-correct
+    ``rsplit("/", 1)`` implementation against a regression to ``os.path``,
+    which resolves to ``ntpath`` on Windows.
+    """
+
+    def test_nested_regular_whiteout_removes_target_only(self) -> None:
+        """``usr/share/doc/.wh.README`` removes only ``usr/share/doc/README``."""
+        scanner = OCIScanner()
+        vfs = {
+            "usr/share/doc/README": b"a",
+            "usr/share/doc/keep": b"b",
+            "usr/share/man/README": b"c",
+        }
+
+        scanner._apply_whiteouts(vfs, ["usr/share/doc/.wh.README"])
+
+        assert set(vfs) == {"usr/share/doc/keep", "usr/share/man/README"}
+        assert not any("\\" in key for key in vfs)
+        assert "usr/share/doc\\README" not in vfs
+
+    def test_nested_opaque_whiteout_keeps_siblings_and_same_layer(self) -> None:
+        """Opaque marker clears its own directory only, sparing same-layer files."""
+        scanner = OCIScanner()
+        vfs = {
+            "etc/config/old.conf": b"old",
+            "etc/config/nested/deep.conf": b"deep",
+            "etc/config/new.conf": b"new",
+            "etc/other/keep.conf": b"keep",
+        }
+
+        scanner._apply_whiteouts(
+            vfs,
+            ["etc/config/.wh..wh..opq", "etc/config/new.conf"],
+        )
+
+        assert set(vfs) == {"etc/config/new.conf", "etc/other/keep.conf"}
+        assert not any("\\" in key for key in vfs)
+
+
 class TestOCIUnsupportedMediaType:
     """Tests for unsupported media type handling (Req 6.11)."""
 

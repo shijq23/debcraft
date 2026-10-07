@@ -8,7 +8,7 @@ Requirements: 11.2, 11.9, 11.10, 11.11
 
 from __future__ import annotations
 
-import stat
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -19,6 +19,18 @@ from debcraft.cli import app
 from debcraft.domain.sbom.values import OutputFormat, WriterResult
 
 runner = CliRunner()
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _normalize(output: str) -> str:
+    """Strip ANSI styling and collapse Rich's line wrapping.
+
+    Rich colours and wraps console output at the terminal width, which
+    differs between the Linux and Windows runners. Collapsing whitespace
+    keeps message assertions width-independent.
+    """
+    return " ".join(_ANSI_ESCAPE_RE.sub("", output).split())
 
 
 # ---------------------------------------------------------------------------
@@ -158,29 +170,76 @@ class TestPathValidation:
 
 
 @pytest.mark.unit
+class TestIsDirWritable:
+    """Tests for the _is_dir_writable write probe."""
+
+    def test_existing_directory_is_writable(self, tmp_path: Path):
+        """A normal temp directory accepts the probe file."""
+        from debcraft.cli.sbom import _is_dir_writable
+
+        assert _is_dir_writable(tmp_path) is True
+
+    def test_missing_directory_is_not_writable(self, tmp_path: Path):
+        """A directory that does not exist cannot accept files."""
+        from debcraft.cli.sbom import _is_dir_writable
+
+        assert _is_dir_writable(tmp_path / "does-not-exist") is False
+
+    def test_probe_leaves_no_files_behind(self, tmp_path: Path):
+        """The probe file is removed when the probe completes."""
+        from debcraft.cli.sbom import _is_dir_writable
+
+        assert _is_dir_writable(tmp_path) is True
+        assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.unit
 class TestOutputDirValidation:
     """Tests for --output-dir validation."""
 
     def test_non_writable_directory_exits_nonzero(self, tmp_path: Path):
-        """Non-writable output directory exits with non-zero code."""
+        """Non-writable output directory exits with non-zero code.
+
+        Writability is forced to False through the exact hook the CLI uses
+        instead of ``chmod``: a read-only mode bit does not stop directory
+        writes on Windows, so a chmod-based test passes validation there and
+        runs the whole command.
+        """
         artifact = tmp_path / "artifact.deb"
         artifact.write_text("fake artifact")
 
-        # Create a directory and make it non-writable
-        readonly_dir = tmp_path / "readonly"
-        readonly_dir.mkdir()
-        readonly_dir.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
 
-        try:
+        with patch("debcraft.cli.sbom._is_dir_writable", return_value=False):
             result = runner.invoke(
                 app,
-                ["sbom", str(artifact), "--output-dir", str(readonly_dir)],
+                ["sbom", str(artifact), "--output-dir", str(output_dir)],
             )
-            assert result.exit_code != 0
-            assert "not writable" in result.output or "Cannot create" in result.output
-        finally:
-            # Restore permissions for cleanup
-            readonly_dir.chmod(stat.S_IRWXU)
+
+        assert result.exit_code != 0
+        assert "not writable" in _normalize(result.output)
+
+    def test_output_dir_pointing_at_file_exits_nonzero(self, tmp_path: Path):
+        """An --output-dir that is an existing file exits with non-zero code.
+
+        ``Path.mkdir(parents=True, exist_ok=True)`` re-raises when the target
+        exists and is not a directory. That check lives in pathlib, so the
+        branch is identical on Windows (``FileExistsError``, WinError 183).
+        """
+        artifact = tmp_path / "artifact.deb"
+        artifact.write_text("fake artifact")
+
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x")
+
+        result = runner.invoke(
+            app,
+            ["sbom", str(artifact), "--output-dir", str(blocker)],
+        )
+
+        assert result.exit_code != 0
+        assert "Cannot create output directory" in _normalize(result.output)
 
     def test_nonexistent_output_dir_is_created(self, tmp_path: Path):
         """Nonexistent output-dir is created automatically if possible."""

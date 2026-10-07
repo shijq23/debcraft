@@ -487,11 +487,21 @@ class TestSPDX23WriterErrors:
 
     @pytest.mark.asyncio
     async def test_unwritable_path_raises(self, tmp_path: Path) -> None:
-        """AC 3.8: Unwritable path raises OutputPathError."""
+        r"""AC 3.8: Unwritable path raises OutputPathError.
+
+        The output path is nested under an existing *file*, so
+        ``Path.mkdir(parents=True, exist_ok=True)`` re-raises instead of
+        swallowing: the ``exist_ok`` shortcut only applies when the target
+        is a directory. That is pathlib logic, not OS policy, so it holds on
+        Windows too (where the underlying error is ``FileExistsError``,
+        ``[WinError 183]``). A hardcoded ``/proc`` path would be a writable
+        ``C:\proc`` there and raise nothing.
+        """
         doc = _make_document()
         writer = SPDX23Writer()
-        # Use a path that can't be written to
-        output = Path("/proc/nonexistent/output.spdx.json")
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x")
+        output = blocker / "output.spdx.json"
 
         with pytest.raises(OutputPathError):
             await writer.write(doc, output, _make_context())

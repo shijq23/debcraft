@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import tarfile
 import time
 from typing import TYPE_CHECKING
@@ -320,6 +321,12 @@ class DockerScanner(ScannerMixin):
 
         After processing, the whiteout markers themselves are removed from the vfs.
 
+        Layer entry names come from tar members and are always forward-slash
+        separated, and the vfs is keyed by those names verbatim. All path math
+        therefore uses ``posixpath`` rather than ``os.path``, which is
+        ``ntpath`` on Windows and would produce backslash-joined keys that
+        never match the vfs.
+
         Args:
             vfs: The virtual filesystem dict to modify.
             layer_entries: List of entry names from this layer.
@@ -327,13 +334,13 @@ class DockerScanner(ScannerMixin):
         # Build a set of non-whiteout entries from this layer for opaque handling
         current_layer_files: set[str] = set()
         for entry in layer_entries:
-            basename = os.path.basename(entry)
+            basename = posixpath.basename(entry)
             if not basename.startswith(WHITEOUT_PREFIX):
                 current_layer_files.add(entry)
 
         for entry in layer_entries:
-            basename = os.path.basename(entry)
-            dirname = os.path.dirname(entry)
+            basename = posixpath.basename(entry)
+            dirname = posixpath.dirname(entry)
 
             if basename == OPAQUE_WHITEOUT:
                 # Opaque whiteout: remove all entries under this directory
@@ -348,7 +355,7 @@ class DockerScanner(ScannerMixin):
             elif basename.startswith(WHITEOUT_PREFIX):
                 # Regular whiteout: remove the specific file
                 target_name = basename[len(WHITEOUT_PREFIX) :]
-                target_path = os.path.join(dirname, target_name) if dirname else target_name
+                target_path = posixpath.join(dirname, target_name) if dirname else target_name
                 vfs.pop(target_path, None)
                 # Remove the whiteout marker itself
                 vfs.pop(entry, None)

@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from debcraft.infrastructure.models.base import Base
@@ -196,8 +196,16 @@ class TestCreateDatabaseEngines:
             await engines.dispose()
 
     async def test_cache_db_created_on_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When cache.db doesn't exist, it is created with schema."""
+        """When cache.db doesn't exist, it is created with schema.
+
+        The expected location comes from the same resolver production uses.
+        ``resolve_xdg_path`` honours ``XDG_CACHE_HOME`` on every platform but
+        keeps a platform-native subdirectory layout, so a hardcoded
+        ``<cache>/debcraft/cache/cache.db`` would miss the Windows layout
+        (which carries an extra ``cache`` grouping segment).
+        """
         from debcraft.cli._sbom_db import create_database_engines
+        from debcraft.infrastructure.storage.paths import resolve_xdg_path
 
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
@@ -206,22 +214,34 @@ class TestCreateDatabaseEngines:
         try:
             assert engines.cache_engine is not None
             assert engines.cache_session_factory is not None
-            # cache.db file should have been created
-            cache_db_path = tmp_path / "cache" / "debcraft" / "cache" / "cache.db"
+
+            # cache.db file should have been created under the resolved path
+            cache_db_path = resolve_xdg_path("cache") / "cache.db"
             assert cache_db_path.exists()
+            # XDG_CACHE_HOME must have been honoured (non-tautological check)
+            assert tmp_path in cache_db_path.parents
+
+            # The file really carries the cache schema the test name claims
+            async with engines.cache_session_factory() as session:
+                result = await session.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table' AND name='cached_enrichments'")
+                )
+                assert result.scalars().all() == ["cached_enrichments"]
         finally:
             await engines.dispose()
 
     async def test_metadata_db_exists_creates_engine(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """When metadata.db exists, engine and session factory are created."""
         from debcraft.cli._sbom_db import create_database_engines
-
-        data_dir = tmp_path / "data" / "debcraft"
-        data_dir.mkdir(parents=True)
-        (data_dir / "metadata.db").write_bytes(b"")  # Empty file is enough for engine creation
+        from debcraft.infrastructure.storage.paths import resolve_xdg_path
 
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+        # Seed metadata.db wherever production will look for it
+        data_dir = resolve_xdg_path("database")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "metadata.db").write_bytes(b"")  # Empty file is enough for engine creation
 
         engines = await create_database_engines()
         try:

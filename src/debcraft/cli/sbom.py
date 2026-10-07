@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
+import tempfile
 from contextlib import AbstractAsyncContextManager, AbstractContextManager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, TypeVar
@@ -227,6 +227,27 @@ def _validate_artifact_path(artifact_path: Path) -> None:
         raise typer.Exit(code=1)
 
 
+def _is_dir_writable(directory: Path) -> bool:
+    """Probe whether a directory accepts new files.
+
+    ``os.access(dir, os.W_OK)`` is unreliable on Windows (it only reflects
+    the read-only file attribute, ignores ACLs, and reports directories as
+    writable almost unconditionally), so writability is established by
+    actually creating and removing a temporary file.
+
+    Args:
+        directory: Directory to probe.
+
+    Returns:
+        True if a file could be created in the directory, False otherwise.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(dir=directory, prefix=".debcraft-probe-"):
+            return True
+    except OSError:
+        return False
+
+
 def _validate_output_dir(output_dir: Path) -> None:
     """Validate that the output directory is writable.
 
@@ -243,7 +264,7 @@ def _validate_output_dir(output_dir: Path) -> None:
         console.print(f"[red]Error:[/red] Cannot create output directory: {output_dir} ({exc})")
         raise typer.Exit(code=1) from None
 
-    if not os.access(output_dir, os.W_OK):
+    if not _is_dir_writable(output_dir):
         console.print(f"[red]Error:[/red] Output directory is not writable: {output_dir}")
         raise typer.Exit(code=1)
 

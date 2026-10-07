@@ -3,7 +3,8 @@
 import importlib.metadata
 import logging
 import re
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import typer
@@ -292,12 +293,16 @@ def test_sbom_nonexistent_path_exits_nonzero():
 
 
 @pytest.mark.unit
-def test_sbom_invalid_format_exits_nonzero():
+def test_sbom_invalid_format_exits_nonzero(tmp_path: Path):
     """SBOM command with an invalid format exits non-zero and lists valid formats.
+
+    The artifact path must exist, because path validation runs before format
+    validation. ``tmp_path`` is used instead of ``/tmp`` so the test does not
+    depend on a POSIX directory happening to exist on the current drive.
 
     Validates: Requirement 4.3
     """
-    result = runner.invoke(app, ["sbom", "/tmp", "--format", "invalid_format"])
+    result = runner.invoke(app, ["sbom", str(tmp_path), "--format", "invalid_format"])
     assert result.exit_code != 0
     assert "invalid_format" in result.output
     # Should list valid formats
@@ -307,17 +312,21 @@ def test_sbom_invalid_format_exits_nonzero():
 
 
 @pytest.mark.unit
-def test_sbom_no_format_defaults_to_all():
+def test_sbom_no_format_defaults_to_all(tmp_path: Path):
     """SBOM command with no --format option does not crash on format validation.
 
     When no format is specified, the command should default to all formats.
-    We mock the workflow execution since it requires a real artifact, but
-    verify that format validation passes without error.
+    The workflow coroutine itself is replaced (rather than ``asyncio.run``)
+    so no orphaned ``_run_sbom`` coroutine is created, which would surface
+    later as an unrelated "never awaited" RuntimeWarning.
 
     Validates: Requirement 4.4
     """
-    with patch("debcraft.cli.sbom._validate_artifact_path"), patch("debcraft.cli.sbom.asyncio.run", return_value=[]):
-        result = runner.invoke(app, ["sbom", "/tmp"])
+    with (
+        patch("debcraft.cli.sbom._validate_artifact_path"),
+        patch("debcraft.cli.sbom._run_sbom", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = runner.invoke(app, ["sbom", str(tmp_path), "--output-dir", str(tmp_path)])
     # The command may fail because no SBOM files were generated (mocked),
     # but it should NOT fail due to format validation.
     # Check that no format validation error occurred
