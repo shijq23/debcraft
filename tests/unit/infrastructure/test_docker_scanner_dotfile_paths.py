@@ -9,6 +9,11 @@ a ``.wh.`` whiteout marker for such a file never matched its target.
 These tests drive the real scanner path (``_process_docker_layers``, which runs
 ``_merge_layer`` and ``_apply_whiteouts``) rather than the normalization helper
 in isolation, so they demonstrate the user-visible impact.
+
+The file also covers the *root-level* opaque whiteout path that prefix removal
+made reachable: a marker spelled ``./.wh..wh..opq`` used to be mangled to
+``wh..wh..opq`` and so never matched ``OPAQUE_WHITEOUT``, leaving the
+empty-dirname branch of ``_apply_whiteouts`` dead.
 """
 
 from __future__ import annotations
@@ -140,6 +145,72 @@ class TestDotfileRootedLayerPaths:
             )
 
         assert set(vfs) == {".bashrc", ".config/app.conf"}
+
+
+class TestRootLevelOpaqueWhiteout:
+    """A root-level ``.wh..wh..opq`` wipes the whole lower-layer tree.
+
+    Before prefix removal this branch was unreachable: ``lstrip("./")`` turned
+    ``./.wh..wh..opq`` into ``wh..wh..opq``, which never equalled
+    ``OPAQUE_WHITEOUT``. With ``removeprefix("./")`` the marker normalizes to
+    ``.wh..wh..opq``, ``posixpath.dirname`` is ``""``, the prefix is ``""`` and
+    every lower-layer key absent from the current layer is removed.
+
+    Spec basis: an opaque whiteout hides *all* children of its containing
+    directory, including sub-directories and every descendant; whiteouts apply
+    only to lower layers, so same-layer entries survive; and the marker itself
+    must be hidden once applied. At the archive root the containing directory is
+    the whole tree, so wiping a lower-layer ``var/lib/dpkg/status`` is correct.
+    See https://github.com/opencontainers/image-spec/blob/main/layer.md
+    """
+
+    def test_root_opaque_removes_lower_layer_and_keeps_same_layer(self, tmp_path) -> None:
+        """Lower-layer keys go, the same-layer file stays, the marker is hidden."""
+        lower = _create_layer_tar(
+            {
+                "./usr/bin/foo": b"elf",
+                "./var/lib/dpkg/status": b"Package: pkg\n",
+                "./.dockerenv": b"docker-marker",
+            }
+        )
+        upper = _create_layer_tar({"./.wh..wh..opq": b"", "./new.txt": b"new"})
+        tarball_path, layer_paths = _create_docker_tarball(tmp_path, [lower, upper])
+
+        scanner = _make_scanner()
+        with tarfile.open(tarball_path, "r") as outer_tar:
+            vfs, diagnostics, cancelled = scanner._process_docker_layers(
+                outer_tar,
+                layer_paths,
+                _make_workflow_context(),
+            )
+
+        assert not cancelled
+        assert diagnostics == []
+        assert set(vfs) == {"new.txt"}
+        assert vfs["new.txt"] == b"new"
+        for removed in ("usr/bin/foo", "var/lib/dpkg/status", ".dockerenv"):
+            assert removed not in vfs
+        assert ".wh..wh..opq" not in vfs
+        # The key the old lstrip("./") produced must never appear.
+        assert "wh..wh..opq" not in vfs
+
+    def test_root_opaque_alone_empties_the_filesystem(self, tmp_path) -> None:
+        """An upper layer holding only the root marker leaves an empty vfs."""
+        lower = _create_layer_tar({"./usr/bin/foo": b"elf", "./var/lib/dpkg/status": b"Package: pkg\n"})
+        upper = _create_layer_tar({"./.wh..wh..opq": b""})
+        tarball_path, layer_paths = _create_docker_tarball(tmp_path, [lower, upper])
+
+        scanner = _make_scanner()
+        with tarfile.open(tarball_path, "r") as outer_tar:
+            vfs, diagnostics, cancelled = scanner._process_docker_layers(
+                outer_tar,
+                layer_paths,
+                _make_workflow_context(),
+            )
+
+        assert not cancelled
+        assert diagnostics == []
+        assert vfs == {}
 
 
 class TestArchiveRootMember:

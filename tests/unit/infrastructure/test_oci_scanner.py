@@ -44,16 +44,32 @@ def _make_context(*, cancelled: bool = False) -> WorkflowContext:
     return ctx
 
 
-def _create_tar_gz(files: dict[str, bytes]) -> bytes:
-    """Create a gzip-compressed tar archive from a dict of path -> content."""
+def _create_tar(files: dict[str, bytes], dirs: tuple[str, ...] = ()) -> bytes:
+    """Create an uncompressed tar archive from path -> content plus directories.
+
+    Args:
+        files: Mapping of member name to file content.
+        dirs: Member names to add as directory (``DIRTYPE``) entries.
+
+    Returns:
+        Raw tar archive bytes.
+    """
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w") as tf:
+        for dir_name in dirs:
+            dir_info = tarfile.TarInfo(name=dir_name)
+            dir_info.type = tarfile.DIRTYPE
+            tf.addfile(dir_info)
         for name, content in files.items():
             info = tarfile.TarInfo(name=name)
             info.size = len(content)
             tf.addfile(info, io.BytesIO(content))
-    tar_data = tar_buffer.getvalue()
-    return gzip.compress(tar_data)
+    return tar_buffer.getvalue()
+
+
+def _create_tar_gz(files: dict[str, bytes], dirs: tuple[str, ...] = ()) -> bytes:
+    """Create a gzip-compressed tar archive from a dict of path -> content."""
+    return gzip.compress(_create_tar(files, dirs))
 
 
 def _create_oci_layout(
@@ -349,6 +365,139 @@ class TestOCIWhiteoutPathSemantics:
 
         assert set(vfs) == {"etc/config/new.conf", "etc/other/keep.conf"}
         assert not any("\\" in key for key in vfs)
+
+
+class TestOCIMemberNameNormalization:
+    """Layer member names go through the shared ``normalize_tar_member_name``.
+
+    The previous open-coded ``startswith``/``elif`` block in ``_merge_layer``
+    was correct prefix removal (it never had the ``lstrip("./")`` dotfile bug),
+    but it stripped only *one* leading slash and kept the archive root member.
+    These tests pin the consolidated behaviour.
+    """
+
+    @pytest.mark.parametrize(
+        ("member", "expected_key"),
+        [
+            ("usr/bin/foo", "usr/bin/foo"),
+            ("./usr/bin/foo", "usr/bin/foo"),
+            ("/usr/bin/foo", "usr/bin/foo"),
+            # Previously "/usr/bin/foo" — only one slash was removed.
+            ("//usr/bin/foo", "usr/bin/foo"),
+            # Previously "/usr/bin/foo" — the elif never ran after the ./ branch.
+            (".//usr/bin/foo", "usr/bin/foo"),
+            ("./.dockerenv", ".dockerenv"),
+            # Single ./ removal: prefix normalization, not canonicalization.
+            ("././usr/bin/x", "./usr/bin/x"),
+        ],
+    )
+    def test_member_name_normalizes_to_expected_key(self, member: str, expected_key: str) -> None:
+        """Each member-name spelling lands on the normalized vfs key."""
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+
+        scanner._merge_layer(vfs, _create_tar({member: b"payload"}))
+
+        assert set(vfs) == {expected_key}
+        assert not any(key.startswith("/") for key in vfs)
+
+    def test_dotfile_whiteout_marker_removes_its_target(self) -> None:
+        """``./.wh..dockerenv`` normalizes to ``.wh..dockerenv`` and deletes ``.dockerenv``.
+
+        A whiteout marker is never a surviving vfs key — ``_apply_whiteouts``
+        pops it — so its normalization is observable only via its effect.
+        """
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+
+        scanner._merge_layer(vfs, _create_tar({"./.dockerenv": b"marker", "./usr/bin/foo": b"elf"}))
+        scanner._merge_layer(vfs, _create_tar({"./.wh..dockerenv": b""}))
+
+        assert set(vfs) == {"usr/bin/foo"}
+        assert ".wh..dockerenv" not in vfs
+
+    def test_archive_root_member_produces_no_key(self) -> None:
+        """A bare ``.`` directory member yields neither a ``.`` nor a ``''`` key."""
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+
+        scanner._merge_layer(vfs, _create_tar({"./usr/bin/foo": b"elf"}, dirs=(".", "./")))
+
+        assert set(vfs) == {"usr/bin/foo"}
+        assert "." not in vfs
+        assert "" not in vfs
+
+
+class TestOCIRootLevelOpaqueWhiteout:
+    """A root-level ``.wh..wh..opq`` wipes the whole lower-layer tree.
+
+    This branch has *always* been reachable in the OCI scanner — its member-name
+    normalization was exact prefix removal from the start, so ``./.wh..wh..opq``
+    always became ``.wh..wh..opq`` and matched the opaque marker. The gap closed
+    here is test coverage, not behaviour. (In the Docker scanner the same branch
+    was unreachable until ``lstrip("./")`` was replaced; see
+    ``test_docker_scanner_dotfile_paths.py``.)
+
+    Spec basis: an opaque whiteout hides *all* children of its containing
+    directory, including sub-directories and every descendant; whiteouts apply
+    only to lower layers, so same-layer entries survive; and the marker itself
+    must be hidden once applied. At the archive root the containing directory is
+    the whole tree. See https://github.com/opencontainers/image-spec/blob/main/layer.md
+    """
+
+    def test_root_opaque_removes_lower_layer_and_keeps_same_layer(self) -> None:
+        """Lower-layer keys go, the same-layer file stays, the marker is hidden."""
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+        lower = _create_tar(
+            {
+                "./usr/bin/foo": b"elf",
+                "./var/lib/dpkg/status": b"Package: pkg\n",
+                "./.dockerenv": b"docker-marker",
+            }
+        )
+        upper = _create_tar({"./.wh..wh..opq": b"", "./new.conf": b"new"})
+
+        scanner._merge_layer(vfs, lower)
+        scanner._merge_layer(vfs, upper)
+
+        assert set(vfs) == {"new.conf"}
+        assert vfs["new.conf"] == b"new"
+        assert ".wh..wh..opq" not in vfs
+        # The spelling the old lstrip("./") would have produced must never appear.
+        assert "wh..wh..opq" not in vfs
+
+    def test_root_opaque_alone_empties_the_filesystem(self) -> None:
+        """An upper layer holding only the root marker leaves an empty vfs."""
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+        lower = _create_tar({"./usr/bin/foo": b"elf", "./var/lib/dpkg/status": b"Package: pkg\n"})
+        upper = _create_tar({"./.wh..wh..opq": b""})
+
+        scanner._merge_layer(vfs, lower)
+        scanner._merge_layer(vfs, upper)
+
+        assert vfs == {}
+
+    @pytest.mark.asyncio
+    async def test_root_opaque_hides_lower_layer_dpkg_status_end_to_end(self, tmp_path: Path) -> None:
+        """The user-visible consequence: the wiped dpkg status is reported missing."""
+        dpkg_content = "Package: bash\nVersion: 5.2-1\nArchitecture: amd64\nStatus: install ok installed\n"
+        oci_dir = _create_oci_layout(
+            tmp_path,
+            layers=[
+                {"var/lib/dpkg/status": dpkg_content.encode()},
+                {".wh..wh..opq": b""},
+            ],
+        )
+        scanner = OCIScanner()
+        artifact = Artifact(type=ArtifactType.OCI, path=str(oci_dir))
+        ctx = _make_context()
+
+        result = await scanner.scan(artifact, ctx)
+
+        assert result.packages == []
+        assert any("dpkg status file not found" in d for d in result.diagnostics)
 
 
 class TestOCIUnsupportedMediaType:

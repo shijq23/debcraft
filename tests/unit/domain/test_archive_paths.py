@@ -19,6 +19,9 @@ NORMALIZATION_TABLE = [
     ("./usr/bin/foo", "usr/bin/foo"),
     ("/usr/bin/foo", "usr/bin/foo"),
     ("//usr/bin/foo", "usr/bin/foo"),
+    # The ``./`` prefix is removed first, then every leading ``/``; the OCI
+    # scanner's former ``startswith``/``elif`` form left a leading slash here.
+    (".//usr/bin/foo", "usr/bin/foo"),
     ("./.dockerenv", ".dockerenv"),
     (".config/app.conf", ".config/app.conf"),
     ("./.config/app.conf", ".config/app.conf"),

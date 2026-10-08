@@ -360,6 +360,25 @@ class DebParser:
     def _extract_file_listing(self, deb_path: str) -> list[str]:
         """Extract file listing from data.tar.
 
+        Why names are not normalized here:
+            ``_read_control_from_tar`` and ``_extract_copyright`` run member
+            names through ``normalize_tar_member_name`` because they perform an
+            **equality lookup** against a fixed path (``"control"``,
+            ``"usr/share/doc/<package>/copyright"``) and would otherwise miss a
+            ``./``-prefixed member. This method performs no lookup: it reports
+            the archive inventory, so verbatim member names are the faithful
+            representation of what the ``.deb`` actually contains. The value is
+            also persisted verbatim in the parse cache keyed by
+            ``PARSER_VERSION``, so changing the spelling would require a version
+            bump to stay coherent.
+
+        Args:
+            deb_path: File system path to the .deb archive.
+
+        Returns:
+            Tar member names from ``data.tar`` exactly as recorded in the
+            archive, including any leading ``./`` prefix.
+
         Raises:
             DebParseError: If data.tar is missing or cannot be read.
         """

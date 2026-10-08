@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from debcraft.domain._archive_paths import normalize_tar_member_name
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
 from debcraft.domain.scanner.values import (
     Artifact,
@@ -388,6 +389,13 @@ class OCIScanner(ScannerMixin):
         - `.wh..wh..opq` markers clear all entries from lower layers
           in the containing directory
 
+        Member names are normalized by removing a leading ``./`` or ``/``
+        *prefix* (see ``normalize_tar_member_name``), which preserves a
+        dot-prefixed first component such as ``.dockerenv``. The archive root
+        member (``.`` or ``./``) is skipped: it is a directory, not a file, and
+        has no meaning in the "written by this layer" set that
+        ``_apply_whiteouts`` consults.
+
         Args:
             vfs: The virtual filesystem dict (path -> content bytes).
             tar_data: Decompressed tar archive data for this layer.
@@ -397,14 +405,8 @@ class OCIScanner(ScannerMixin):
 
         with tarfile.open(fileobj=tar_buffer, mode="r:") as tf:
             for member in tf:
-                name = member.name
-                # Normalize: strip leading ./ or /
-                if name.startswith("./"):
-                    name = name[2:]
-                elif name.startswith("/"):
-                    name = name[1:]
-
-                if not name:
+                name = normalize_tar_member_name(member.name)
+                if not name or name == ".":
                     continue
 
                 layer_entries.append(name)

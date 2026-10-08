@@ -298,6 +298,28 @@ class TestFileListing:
         assert "./usr/bin/hello" in result.file_listing
         assert "./usr/share/doc/test/README" in result.file_listing
 
+    def test_member_names_are_reported_verbatim(self) -> None:
+        """File listing keeps raw member names, unlike the control/copyright readers.
+
+        ``_read_control_from_tar`` and ``_extract_copyright`` normalize member
+        names because they match a fixed path; this method reports the archive
+        inventory and must not. The asymmetry is deliberate — see the
+        "Why names are not normalized here" note on ``_extract_file_listing``
+        and the Item 3 findings in the archive-path follow-up report.
+        """
+        control_tar = _make_tar_bytes({"./control": "Package: test\nVersion: 1.0\nArchitecture: all\n"})
+        data_tar = _make_tar_bytes({"./usr/bin/hello": "bin", "./.hidden/config": "cfg"})
+        reader = FakeFileReader(control_tar=control_tar, data_tar=data_tar)
+        parser = DebParser(reader)
+
+        result = parser.parse("/fake/test.deb")
+
+        assert "./usr/bin/hello" in result.file_listing
+        assert "./.hidden/config" in result.file_listing
+        # The normalized spellings must NOT appear: this listing is verbatim.
+        assert "usr/bin/hello" not in result.file_listing
+        assert ".hidden/config" not in result.file_listing
+
     def test_missing_data_tar_raises_error(self) -> None:
         control_tar = _make_tar_bytes({"./control": "Package: test\nVersion: 1.0\nArchitecture: all\n"})
         reader = FakeFileReader(control_tar=control_tar, missing_members={"data.tar"})
