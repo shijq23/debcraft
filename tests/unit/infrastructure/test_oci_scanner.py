@@ -427,6 +427,42 @@ class TestOCIMemberNameNormalization:
         assert "." not in vfs
         assert "" not in vfs
 
+    def test_regular_file_named_dot_is_skipped(self) -> None:
+        """A malformed layer where ``.`` is a *regular file* yields no ``.`` key.
+
+        The ``name == "."`` guard is only observable for a ``REGTYPE`` member,
+        since directory members never reach the vfs at all. ``"./"`` normalizes
+        to ``""`` and is caught by the ``not name`` branch, so ``"."`` is the
+        single input the extra guard exists for.
+        """
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+
+        scanner._merge_layer(vfs, _create_tar({".": b"bogus", "./usr/bin/foo": b"elf"}))
+
+        assert set(vfs) == {"usr/bin/foo"}
+        assert "." not in vfs
+
+    def test_regular_file_named_dot_cannot_shield_itself_from_a_root_wipe(self) -> None:
+        """A ``.`` member in the same layer as a root opaque marker is not preserved.
+
+        This is the downstream reason the guard matters. ``_apply_whiteouts``
+        exempts keys present in ``layer_entries`` from an opaque wipe, so an
+        unskipped ``.`` would be written to the vfs *and* shield itself,
+        surviving a root-level ``.wh..wh..opq`` as a bogus key.
+        """
+        scanner = OCIScanner()
+        vfs: dict[str, bytes] = {}
+
+        lower = _create_tar({"./usr/bin/foo": b"elf"})
+        upper = _create_tar({".": b"bogus", "./.wh..wh..opq": b""})
+
+        scanner._merge_layer(vfs, lower)
+        scanner._merge_layer(vfs, upper)
+
+        assert vfs == {}
+        assert "." not in vfs
+
 
 class TestOCIRootLevelOpaqueWhiteout:
     """A root-level ``.wh..wh..opq`` wipes the whole lower-layer tree.
