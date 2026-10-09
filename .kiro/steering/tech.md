@@ -10,7 +10,7 @@ Runtime deps (`[project] dependencies`, all 10): typer + rich (CLI), sqlalchemy 
 
 ## Canonical targets
 
-`Makefile` and `justfile` define the same seven targets with the same commands — neither overrides the other, pick either. No `install` target exists; use `uv sync` directly. `make test` is green on a clean tree because it runs the unit-only default plus architecture; it does **not** cover `-m integration`, which has a known baseline failure (see `#testing`).
+`Makefile` and `justfile` define the same seven targets with the same commands — neither overrides the other, pick either. No `install` target exists; use `uv sync` directly. `make test` is green on a clean tree because it runs the unit-only default plus architecture; it does **not** cover `-m integration`. The integration suite passes on its own (**67 passed, 0 failed**, ~13s) and must be run separately — `uv run pytest -m integration`. See `#testing`.
 
 | Task | Command |
 |------|---------|
