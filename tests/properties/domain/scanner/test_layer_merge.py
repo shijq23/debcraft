@@ -15,24 +15,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from debcraft.infrastructure.scanners.docker import DockerScanner
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_docker_scanner() -> DockerScanner:
-    """Create a DockerScanner instance with dummy ports (not used for whiteouts)."""
-
-    class _DummyPort:
-        pass
-
-    return DockerScanner(
-        contents_port=_DummyPort(),  # type: ignore[arg-type]
-        package_port=_DummyPort(),  # type: ignore[arg-type]
-    )
-
+from debcraft.domain._whiteouts import apply_whiteouts
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -106,8 +89,8 @@ def st_directory_with_files(draw: st.DrawFn) -> tuple[str, dict[str, bytes]]:
 class TestProperty7LayerMergeWhiteouts:
     """Property 7: Layer Merge with Whiteouts.
 
-    Tests the _apply_whiteouts method from DockerScanner for correct
-    OCI/Docker whiteout semantics.
+    Tests the shared ``apply_whiteouts`` function for correct OCI/Docker
+    whiteout semantics.
     """
 
     @given(data=st.data())
@@ -116,8 +99,6 @@ class TestProperty7LayerMergeWhiteouts:
 
         **Validates: Requirements 5.3, 6.6**
         """
-        scanner = _make_docker_scanner()
-
         # Generate a base VFS with at least one file
         vfs = data.draw(st_base_vfs())
         if not vfs:
@@ -138,7 +119,7 @@ class TestProperty7LayerMergeWhiteouts:
         layer_entries = [whiteout_entry]
 
         # Apply whiteouts
-        scanner._apply_whiteouts(vfs, layer_entries)
+        apply_whiteouts(vfs, layer_entries)
 
         # Assert the target file is removed
         assert target_path not in vfs, (
@@ -151,8 +132,6 @@ class TestProperty7LayerMergeWhiteouts:
 
         **Validates: Requirements 5.3, 6.6**
         """
-        scanner = _make_docker_scanner()
-
         # Generate a directory with files (simulating lower layer content)
         dir_path, dir_files = data.draw(st_directory_with_files())
 
@@ -173,7 +152,7 @@ class TestProperty7LayerMergeWhiteouts:
         layer_entries = [opaque_entry]
 
         # Apply whiteouts
-        scanner._apply_whiteouts(vfs, layer_entries)
+        apply_whiteouts(vfs, layer_entries)
 
         # Assert ALL files that were under dir_path are gone
         prefix = dir_path + "/"
@@ -194,8 +173,6 @@ class TestProperty7LayerMergeWhiteouts:
 
         **Validates: Requirements 5.2, 5.3**
         """
-        scanner = _make_docker_scanner()
-
         # Generate a VFS with multiple files
         vfs = data.draw(st_base_vfs())
         if len(vfs) < 2:
@@ -219,7 +196,7 @@ class TestProperty7LayerMergeWhiteouts:
 
         # Apply whiteout
         layer_entries = [whiteout_entry]
-        scanner._apply_whiteouts(vfs, layer_entries)
+        apply_whiteouts(vfs, layer_entries)
 
         # Assert non-targeted files are still present with same content
         for path, content in non_targeted.items():
@@ -232,8 +209,6 @@ class TestProperty7LayerMergeWhiteouts:
 
         **Validates: Requirements 5.3, 6.6**
         """
-        scanner = _make_docker_scanner()
-
         # Generate a directory path
         dir_path = data.draw(st_directory_path())
 
@@ -264,7 +239,7 @@ class TestProperty7LayerMergeWhiteouts:
         layer_entries = [opaque_entry, *same_layer_entries]
 
         # Apply whiteouts
-        scanner._apply_whiteouts(vfs, layer_entries)
+        apply_whiteouts(vfs, layer_entries)
 
         # Assert lower-layer files are GONE
         for path in lower_files:

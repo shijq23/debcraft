@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from debcraft.domain._archive_paths import normalize_tar_member_name
+from debcraft.domain._whiteouts import apply_whiteouts
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
 from debcraft.domain.scanner.values import (
     Artifact,
@@ -394,7 +395,7 @@ class OCIScanner(ScannerMixin):
         dot-prefixed first component such as ``.dockerenv``. The archive root
         member (``.`` or ``./``) is skipped: it is a directory, not a file, and
         has no meaning in the "written by this layer" set that
-        ``_apply_whiteouts`` consults.
+        ``apply_whiteouts`` consults.
 
         Args:
             vfs: The virtual filesystem dict (path -> content bytes).
@@ -418,37 +419,4 @@ class OCIScanner(ScannerMixin):
                         vfs[name] = f.read()
 
         # Apply whiteout semantics after extracting all entries
-        self._apply_whiteouts(vfs, layer_entries)
-
-    def _apply_whiteouts(self, vfs: dict[str, bytes], layer_entries: list[str]) -> None:
-        """Apply OCI whiteout semantics to the virtual filesystem.
-
-        Processes whiteout markers found in the layer entries:
-        - `.wh.<filename>`: Remove the file named `<filename>` in the same directory
-        - `.wh..wh..opq`: Remove all entries from lower layers in that directory
-
-        Args:
-            vfs: The virtual filesystem dict to modify in-place.
-            layer_entries: List of entry paths from this layer.
-        """
-        for entry in layer_entries:
-            basename = entry.rsplit("/", 1)[-1] if "/" in entry else entry
-            parent_dir = entry.rsplit("/", 1)[0] if "/" in entry else ""
-
-            if basename == ".wh..wh..opq":
-                # Opaque whiteout: remove all entries in this directory
-                # from lower layers (entries NOT in current layer_entries)
-                prefix = parent_dir + "/" if parent_dir else ""
-                keys_to_remove = [k for k in vfs if k.startswith(prefix) and k != entry and k not in layer_entries]
-                for key in keys_to_remove:
-                    del vfs[key]
-                # Remove the opaque whiteout marker itself
-                vfs.pop(entry, None)
-
-            elif basename.startswith(".wh."):
-                # Single-file whiteout: remove the target file
-                target_name = basename[4:]  # Strip ".wh." prefix
-                target_path = f"{parent_dir}/{target_name}" if parent_dir else target_name
-                vfs.pop(target_path, None)
-                # Remove the whiteout marker itself
-                vfs.pop(entry, None)
+        apply_whiteouts(vfs, layer_entries)

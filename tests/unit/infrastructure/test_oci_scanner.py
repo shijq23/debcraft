@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from debcraft.domain._whiteouts import apply_whiteouts
 from debcraft.domain.scanner.values import Artifact, ArtifactType
 from debcraft.infrastructure.scanners.oci import OCIScanner
 from debcraft.platform.contracts.workflow import (
@@ -335,14 +336,13 @@ class TestOCIWhiteoutPathSemantics:
 
     def test_nested_regular_whiteout_removes_target_only(self) -> None:
         """``usr/share/doc/.wh.README`` removes only ``usr/share/doc/README``."""
-        scanner = OCIScanner()
         vfs = {
             "usr/share/doc/README": b"a",
             "usr/share/doc/keep": b"b",
             "usr/share/man/README": b"c",
         }
 
-        scanner._apply_whiteouts(vfs, ["usr/share/doc/.wh.README"])
+        apply_whiteouts(vfs, ["usr/share/doc/.wh.README"])
 
         assert set(vfs) == {"usr/share/doc/keep", "usr/share/man/README"}
         assert not any("\\" in key for key in vfs)
@@ -350,7 +350,6 @@ class TestOCIWhiteoutPathSemantics:
 
     def test_nested_opaque_whiteout_keeps_siblings_and_same_layer(self) -> None:
         """Opaque marker clears its own directory only, sparing same-layer files."""
-        scanner = OCIScanner()
         vfs = {
             "etc/config/old.conf": b"old",
             "etc/config/nested/deep.conf": b"deep",
@@ -358,7 +357,7 @@ class TestOCIWhiteoutPathSemantics:
             "etc/other/keep.conf": b"keep",
         }
 
-        scanner._apply_whiteouts(
+        apply_whiteouts(
             vfs,
             ["etc/config/.wh..wh..opq", "etc/config/new.conf"],
         )
@@ -404,7 +403,7 @@ class TestOCIMemberNameNormalization:
     def test_dotfile_whiteout_marker_removes_its_target(self) -> None:
         """``./.wh..dockerenv`` normalizes to ``.wh..dockerenv`` and deletes ``.dockerenv``.
 
-        A whiteout marker is never a surviving vfs key — ``_apply_whiteouts``
+        A whiteout marker is never a surviving vfs key — ``apply_whiteouts``
         pops it — so its normalization is observable only via its effect.
         """
         scanner = OCIScanner()
@@ -446,7 +445,7 @@ class TestOCIMemberNameNormalization:
     def test_regular_file_named_dot_cannot_shield_itself_from_a_root_wipe(self) -> None:
         """A ``.`` member in the same layer as a root opaque marker is not preserved.
 
-        This is the downstream reason the guard matters. ``_apply_whiteouts``
+        This is the downstream reason the guard matters. ``apply_whiteouts``
         exempts keys present in ``layer_entries`` from an opaque wipe, so an
         unskipped ``.`` would be written to the vfs *and* shield itself,
         surviving a root-level ``.wh..wh..opq`` as a bogus key.

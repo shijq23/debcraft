@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import json
 import os
-import posixpath
 import tarfile
 import time
 from typing import TYPE_CHECKING
 
 from debcraft.domain._archive_paths import normalize_tar_member_name
+from debcraft.domain._whiteouts import apply_whiteouts
 from debcraft.domain.scanner.dpkg_parser import parse_dpkg_status
 from debcraft.domain.scanner.values import ScanningStrategy, ScanResult
 from debcraft.infrastructure.scanners._mixin import ScannerMixin
@@ -25,8 +25,6 @@ if TYPE_CHECKING:
     from debcraft.platform.contracts.workflow import WorkflowContext
 
 DPKG_STATUS_PATH = "var/lib/dpkg/status"
-WHITEOUT_PREFIX = ".wh."
-OPAQUE_WHITEOUT = ".wh..wh..opq"
 
 
 class DockerScanner(ScannerMixin):
@@ -271,7 +269,7 @@ class DockerScanner(ScannerMixin):
                 layer_tar = tarfile.open(fileobj=layer_fileobj, mode="r:*")  # noqa: SIM115
                 with layer_tar:
                     layer_entries = self._merge_layer(vfs, layer_tar)
-                    self._apply_whiteouts(vfs, layer_entries)
+                    apply_whiteouts(vfs, layer_entries)
 
             except (KeyError, tarfile.TarError, OSError) as exc:
                 diagnostics.append(f"Error extracting layer '{layer_path}': {exc}")
@@ -317,55 +315,6 @@ class DockerScanner(ScannerMixin):
                     vfs[name] = fileobj.read()
 
         return entries
-
-    def _apply_whiteouts(self, vfs: dict[str, bytes], layer_entries: list[str]) -> None:
-        """Apply Docker whiteout semantics to the virtual filesystem.
-
-        Processes whiteout markers from the layer entries:
-        - `.wh.<filename>`: Removes the corresponding file from the vfs
-        - `.wh..wh..opq`: Removes all files in that directory from lower layers
-          (files added in the same layer are preserved)
-
-        After processing, the whiteout markers themselves are removed from the vfs.
-
-        Layer entry names come from tar members and are always forward-slash
-        separated, and the vfs is keyed by those names verbatim. All path math
-        therefore uses ``posixpath`` rather than ``os.path``, which is
-        ``ntpath`` on Windows and would produce backslash-joined keys that
-        never match the vfs.
-
-        Args:
-            vfs: The virtual filesystem dict to modify.
-            layer_entries: List of entry names from this layer.
-        """
-        # Build a set of non-whiteout entries from this layer for opaque handling
-        current_layer_files: set[str] = set()
-        for entry in layer_entries:
-            basename = posixpath.basename(entry)
-            if not basename.startswith(WHITEOUT_PREFIX):
-                current_layer_files.add(entry)
-
-        for entry in layer_entries:
-            basename = posixpath.basename(entry)
-            dirname = posixpath.dirname(entry)
-
-            if basename == OPAQUE_WHITEOUT:
-                # Opaque whiteout: remove all entries under this directory
-                # that came from lower layers (preserve same-layer entries)
-                prefix = dirname + "/" if dirname else ""
-                keys_to_remove = [k for k in vfs if k.startswith(prefix) and k not in current_layer_files]
-                for key in keys_to_remove:
-                    del vfs[key]
-                # Remove the opaque whiteout marker itself
-                vfs.pop(entry, None)
-
-            elif basename.startswith(WHITEOUT_PREFIX):
-                # Regular whiteout: remove the specific file
-                target_name = basename[len(WHITEOUT_PREFIX) :]
-                target_path = posixpath.join(dirname, target_name) if dirname else target_name
-                vfs.pop(target_path, None)
-                # Remove the whiteout marker itself
-                vfs.pop(entry, None)
 
     def _parse_vfs_dpkg(self, vfs: dict[str, bytes]) -> list[IdentifiedPackage] | None:
         """Try to parse dpkg status from vfs, returning packages or None."""

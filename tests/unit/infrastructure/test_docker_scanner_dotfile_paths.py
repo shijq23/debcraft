@@ -7,13 +7,14 @@ the virtual filesystem was keyed by a path that does not exist in the image and
 a ``.wh.`` whiteout marker for such a file never matched its target.
 
 These tests drive the real scanner path (``_process_docker_layers``, which runs
-``_merge_layer`` and ``_apply_whiteouts``) rather than the normalization helper
-in isolation, so they demonstrate the user-visible impact.
+``_merge_layer`` and the shared ``apply_whiteouts``) rather than the
+normalization helper in isolation, so they demonstrate the user-visible impact.
 
 The file also covers the *root-level* opaque whiteout path that prefix removal
 made reachable: a marker spelled ``./.wh..wh..opq`` used to be mangled to
-``wh..wh..opq`` and so never matched ``OPAQUE_WHITEOUT``, leaving the
-empty-dirname branch of ``_apply_whiteouts`` dead.
+``wh..wh..opq`` and so never matched ``OPAQUE_WHITEOUT``
+(now ``debcraft.domain._whiteouts.OPAQUE_WHITEOUT``), leaving the
+empty-dirname branch of ``apply_whiteouts`` dead.
 """
 
 from __future__ import annotations
@@ -152,7 +153,8 @@ class TestRootLevelOpaqueWhiteout:
 
     Before prefix removal this branch was unreachable: ``lstrip("./")`` turned
     ``./.wh..wh..opq`` into ``wh..wh..opq``, which never equalled
-    ``OPAQUE_WHITEOUT``. With ``removeprefix("./")`` the marker normalizes to
+    ``OPAQUE_WHITEOUT`` (now in ``debcraft.domain._whiteouts``). With
+    ``removeprefix("./")`` the marker normalizes to
     ``.wh..wh..opq``, ``posixpath.dirname`` is ``""``, the prefix is ``""`` and
     every lower-layer key absent from the current layer is removed.
 
