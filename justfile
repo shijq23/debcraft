@@ -19,7 +19,7 @@ index:
 
 # Build the package
 build:
-    rm -rf dist/
+    uv run python scripts/clean.py dist
     uv build
 
 # Run linters (format check, ruff, pyright)
@@ -32,18 +32,9 @@ lint:
     uv run pylint src/
     uv run pre-commit run --all-files
 
-# Clean build artifacts and caches
+# Clean build artifacts and caches (cross-platform)
 clean:
-    rm -rf dist/
-    rm -rf site/
-    find . -type d -name "__pycache__" -exec rm -rf {} +
-    find . -type d -name "*.egg-info" -exec rm -rf {} +
-    rm -rf .ruff_cache/
-    rm -rf .pytest_cache/
-    rm -rf .mypy_cache/
-    rm -rf .import_linter_cache/
-    rm -rf .coverage
-    rm -rf htmlcov/
+    uv run python scripts/clean.py
 
 # Generate documents site
 docs:
